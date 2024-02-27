@@ -1,0 +1,25 @@
+//
+// Created by why on 2024/2/22.
+//
+
+#ifndef UNTITLED1_CURSOR_H
+#define UNTITLED1_CURSOR_H
+
+#include <switch/types.h>
+
+#define FT_WIDTH 1280
+#define FT_HEIGHT 720
+typedef struct {
+    u32 x;
+    u32 y;
+    u32 width;
+    u32 height;
+    u32 offset;
+} Cursor;
+
+void Init_Cursor(Cursor *cursor, u32 x, u32 y, u32 width, u32 height, u32 offset);
+void Destroy_Cursor(Cursor *cursor);
+
+void Draw_Cursor(Cursor *cursor, u32 stride, bool (*text_draw)[FT_WIDTH][FT_HEIGHT], u32 *framebuf, u32 R, u32 G, u32 B);
+
+#endif //UNTITLED1_CURSOR_H
