@@ -5,7 +5,6 @@
 #include <switch.h>
 
 #include <ft2build.h>
-#include <unistd.h>
 #include <time.h>
 #include FT_FREETYPE_H
 #include "cursor.h"
@@ -132,27 +131,7 @@ void draw_glyph(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y) {
         imageptr += bitmap->pitch;
     }
 }
-//void draw_glyph(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y) {
-//    u32 framex, framey;
-//    u32 tmpx, tmpy;
-//    u8 *imageptr = bitmap->buffer;
-//
-//    if (bitmap->pixel_mode != FT_PIXEL_MODE_GRAY) return;
-//
-//    for (tmpy = 0; tmpy < bitmap->rows; tmpy++) {
-//        for (tmpx = 0; tmpx < bitmap->width; tmpx++) {
-//            framex = x + tmpx;
-//            framey = y + tmpy;
-//
-//            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(imageptr[tmpx], imageptr[tmpx], imageptr[tmpx]);
-//        }
-//
-//        imageptr += bitmap->pitch;
-//    }
-//}
 
-//Note that this doesn't handle {tmpx > width}, etc.
-//str is UTF-8.
 void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str) {
     u32 tmpx = x;
     FT_Error ret = 0;
@@ -195,6 +174,20 @@ void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str) {
         tmpx += slot->advance.x >> 6;
         y += slot->advance.y >> 6;
     }
+}
+
+// 计算先前文本的像素宽度
+u32 next_x(const char *previous_text, FT_Face face, u32 previous_x){
+    u32 previous_text_width = 0;
+    for (int i = 0; i < strlen(previous_text); i++) {
+        FT_UInt glyph_index = FT_Get_Char_Index(face, previous_text[i]);
+        if (glyph_index) {
+            FT_Load_Glyph(face, glyph_index, FT_LOAD_RENDER);
+            previous_text_width += face->glyph->advance.x >> 6;
+        }
+    }
+
+    return previous_x + previous_text_width;
 }
 
 __attribute__((format(printf, 1, 2)))
@@ -375,23 +368,32 @@ int main(int argc, char **argv) {
     s32 r_total_out = 0;
 
     char log_list[LOG_LIST_MAX_LINES][LOG_LIST_MAX_LINE_LENGTH];
+    u32 log_list_index = 0;
+
     char **ssid_list = NULL;
     int ssid_list_dif_log_list = 0;
     int num_lines_to_display = 0;
     bool print_return_sentence = true;
+
     while (appletMainLoop()) {
+
         // Scan the gamepad. This should be done once for each frame
         padUpdate(&pad);
 
         // padGetButtonsDown returns the set of buttons that have been newly pressed in this frame compared to the previous one
         u32 kDown = padGetButtonsDown(&pad);
+
+        //进入 clear WiFi profiler
         if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[1].y - 20)) {
             main_menu->print_flag = false;
             cwp_menu->print_flag = true;
         }
-        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[2].y - 20))
-            break; // break in order to return to hbmenu
 
+        // break in order to return to hbmenu
+        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[2].y - 20))
+            break;
+
+        // 返回到上一级
         if (kDown & HidNpadButton_B && cwp_menu->print_flag) {
             main_menu->print_flag = true;
             cwp_menu->print_flag = false;
@@ -448,8 +450,8 @@ int main(int argc, char **argv) {
                 if (R_FAILED(res)) return error_screen("nifmSetWirelessCommunicationEnabled() failed: 0X%x\n", res);
             }
 
-//            draw_text(face, framebuf, offset_x, offset_y + offset, "airplane mode: enable");
             if (start_delete_ssid) {
+                log_list_index = 0;
                 //下面是查询WiFi，并且删除（这个逻辑只能被执行一次）
                 s32 r_count;
                 s32 count = 10;
@@ -474,7 +476,6 @@ int main(int argc, char **argv) {
 
                 if (r_total_out - 1 != 0) {
                     Service *service = nifmGetServiceSession_GeneralService();
-
                     //删除switch的所有ssid
                     for (int i = 0; i < r_count; ++i) {
                         if (strlen((NetworkSettings + i)->access_point_ssid) > 0 &&
@@ -491,13 +492,18 @@ int main(int argc, char **argv) {
                 } else {
 //                printf("no wifi profiles are currently set up.");
                 }
-                strcpy(log_list[0], "airplane mode: enable");
+                strcpy(log_list[log_list_index], "airplane mode: enable");
+                log_list_index++;
                 char s[255];
                 sprintf(s, "total out: %d", r_total_out - 1);
-                strcpy(log_list[1], s);
+                strcpy(log_list[log_list_index], s);
+                log_list_index++;
+
                 if (r_total_out - 1 == 0) {
-                    strcpy(log_list[2], "no wifi profiles are currently set up.");
+                    strcpy(log_list[log_list_index], "no wifi profiles are currently set up.");
+                    log_list_index++;
                 }
+
                 for (int i = 1; i < r_total_out; ++i) {
                     char ssid[255];
                     sprintf(ssid, "ssid: %s", (NetworkSettings + i)->access_point_ssid);
@@ -505,6 +511,11 @@ int main(int argc, char **argv) {
                         int index = i + 1;
                         strcpy(log_list[index], ssid);
                     } else break;
+                }
+
+                if(r_total_out - 1 < LOG_LIST_MAX_LINES - log_list_index && r_total_out - 1 > 0 && print_return_sentence){
+                    strcpy(log_list[log_list_index + r_total_out - 1], "delete all wifi profiles! press B to return");
+                    print_return_sentence = false;
                 }
 
                 ssid_list = malloc(r_total_out * sizeof(char *));
@@ -550,14 +561,15 @@ int main(int argc, char **argv) {
                 }
 
                 if (num_lines_to_display == LOG_LIST_MAX_LINES && print_return_sentence && r_total_out - 1 > 0) {
-                    if(r_total_out - 1 < LOG_LIST_MAX_LINES - 2){
-                        strcpy(log_list[2 + r_total_out - 1], "delete all wifi profiles! press B to return");
-                    } else{
-                        for (int i = 0; i < LOG_LIST_MAX_LINES - 1; i++)
-                            strcpy(log_list[i], log_list[i + 1]);
+//                    if (r_total_out - 1 < LOG_LIST_MAX_LINES - 2) {
+//                        strcpy(log_list[2 + r_total_out - 1], "delete all wifi profiles! press B to return");
+//                    } else {
+//
+//                    };
+                    for (int i = 0; i < LOG_LIST_MAX_LINES - 1; i++)
+                        strcpy(log_list[i], log_list[i + 1]);
 
-                        strcpy(log_list[LOG_LIST_MAX_LINES - 1], "delete all wifi profiles! press B to return");
-                    };
+                    strcpy(log_list[LOG_LIST_MAX_LINES - 1], "delete all wifi profiles! press B to return");
 
                     print_return_sentence = false;
                 }
@@ -568,7 +580,7 @@ int main(int argc, char **argv) {
 
         cursor_end_height = offset_y + 2 * offset;
 
-        if (kDown & HidNpadButton_Down) {
+        if (kDown & HidNpadButton_Down || kDown & HidNpadButton_StickLDown) {
             Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
             cursor.y += cursor.offset;
             cursor.height += cursor.offset;
@@ -580,7 +592,7 @@ int main(int argc, char **argv) {
                 Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
         }
 
-        if (kDown & HidNpadButton_Up) {
+        if (kDown & HidNpadButton_Up || kDown & HidNpadButton_StickLUp) {
             Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
 
             cursor.y -= cursor.offset;
