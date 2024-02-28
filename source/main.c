@@ -8,20 +8,31 @@
 #include <time.h>
 #include FT_FREETYPE_H
 #include "cursor.h"
-#include "menu.h"
 
 // Define the desired framebuffer resolution (here we set it to 720p).
 #define FB_WIDTH  1280
 #define FB_HEIGHT 720
-#define LOG_LIST_MAX_LINES 21
+//============================menu============================
+#define MAIN_MENU_SIZE 3
+#define MAIN_MENU_TITLE_X 540
+#define MAIN_MENU_TITLE_Y 54
+#define CWP_MENU_SIZE 1
+#define CWP_MENU_TITLE_X 500
+#define CWP_MENU_TITLE_Y 54
+#define TIME_X 900
+//============================menu============================
+
+//============================log_list============================
+#define LOG_LIST_MAX_LINES 32
 #define LOG_LIST_MAX_LINE_LENGTH 255
+//============================log_list============================
 
 #define HORIZON_LINE(y, x) (((y) >= 74) && ((y) <= 76) && ((x) >= 10) && ((x) <= FB_WIDTH - 10))
 //上下左右白色边框
 #define TOP_LINE(y, x) (((y) >= 10) && ((y) <= 12) && ((x) >= 10) && ((x) <= FB_WIDTH - 10))
-#define BOTTOM_LINE(y, x) ((y) >= FB_HEIGHT - 10 && ((y) <= FB_HEIGHT - 8) && ((x) >= 10) && ((x) <= (FB_WIDTH - 10)))
-#define LEFT_LINE(y, x) ((y) >= 10 && ((y) <= FB_HEIGHT - 8) && ((x) >= 10) && ((x) <= 12))
-#define RIGHT_LINE(y, x) ((y) >= 10 && ((y) <= FB_HEIGHT - 8) && ((x) >= FB_WIDTH - 12) && ((x) <= FB_WIDTH - 10))
+#define BOTTOM_LINE(y, x) (((y) >= FB_HEIGHT - 10) && ((y) <= FB_HEIGHT - 8) && ((x) >= 10) && ((x) <= (FB_WIDTH - 10)))
+#define LEFT_LINE(y, x) (((y) >= 10) && ((y) <= FB_HEIGHT - 8) && ((x) >= 10) && ((x) <= 12))
+#define RIGHT_LINE(y, x) (((y) >= 10) && ((y) <= FB_HEIGHT - 8) && ((x) >= FB_WIDTH - 12) && ((x) <= FB_WIDTH - 10))
 
 static u32 framebuf_width = 0;
 
@@ -177,7 +188,7 @@ void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str) {
 }
 
 // 计算先前文本的像素宽度
-u32 next_x(const char *previous_text, FT_Face face, u32 previous_x){
+u32 next_x(const char *previous_text, FT_Face face, u32 previous_x) {
     u32 previous_text_width = 0;
     for (int i = 0; i < strlen(previous_text); i++) {
         FT_UInt glyph_index = FT_Get_Char_Index(face, previous_text[i]);
@@ -338,34 +349,41 @@ int main(int argc, char **argv) {
     framebufferCreate(&fb, nwindowGetDefault(), FB_WIDTH, FB_HEIGHT, PIXEL_FORMAT_RGBA_8888, 2);
     framebufferMakeLinear(&fb);
 
-    Cursor cursor;
-    u32 font_size = 20;
-    u32 cursor_start_x = offset_x;
-    u32 cursor_start_y = offset_y + offset - font_size;
-    u32 cursor_start_height = 115;
-    Init_Cursor(&cursor, cursor_start_x, cursor_start_y, 1200, 115, offset);
-
-    u32 cursor_end_height = 0;
+    //主菜单
     Menu *main_menu;
-    Init_Menu(&main_menu, 3, true);
-    strcpy(main_menu->selection[0].name, "Main Menu");
-    main_menu->selection[0].x = 540;
-    main_menu->selection[0].y = 54;
-    strcpy(main_menu->selection[1].name, "Clear Wifi Profile");
-    main_menu->selection[1].x = offset_x;
-    main_menu->selection[1].y = offset_y + offset;
-    strcpy(main_menu->selection[2].name, "Exit");
-    main_menu->selection[2].x = offset_x;
-    main_menu->selection[2].y = offset_y + 2 * offset;
+    Init_Menu(&main_menu, MAIN_MENU_SIZE, true);
+    strcpy(main_menu->selection[main_menu_title_selection].name, "Main Menu");
+    main_menu->selection[main_menu_title_selection].x = MAIN_MENU_TITLE_X;
+    main_menu->selection[main_menu_title_selection].y = MAIN_MENU_TITLE_Y;
+    strcpy(main_menu->selection[clear_wifi_profiler_selection].name, "Clear Wifi Profile");
+    main_menu->selection[clear_wifi_profiler_selection].x = offset_x;
+    main_menu->selection[clear_wifi_profiler_selection].y = offset_y + clear_wifi_profiler_selection * offset;
+    strcpy(main_menu->selection[text_selection].name, "test");
+    main_menu->selection[text_selection].x = offset_x;
+    main_menu->selection[text_selection].y = main_menu->selection[clear_wifi_profiler_selection].y + 30;
+    strcpy(main_menu->selection[exit_selection].name, "Exit");
+    main_menu->selection[exit_selection].x = offset_x;
+    main_menu->selection[exit_selection].y = offset_y + exit_selection * offset;
 
+    //clear WiFi profiler 菜单
     Menu *cwp_menu;
-    Init_Menu(&cwp_menu, 1, false);
-    strcpy(cwp_menu->selection[0].name, "Clear Wifi Profile");
-    cwp_menu->selection[0].x = 500;
-    cwp_menu->selection[0].y = 54;
+    Init_Menu(&cwp_menu, CWP_MENU_SIZE, false);
+    strcpy(cwp_menu->selection[cwp_title_selection].name, "Clear Wifi Profile");
+    cwp_menu->selection[cwp_title_selection].x = CWP_MENU_TITLE_X;
+    cwp_menu->selection[cwp_title_selection].y = CWP_MENU_TITLE_Y;
     bool enable;
     bool start_delete_ssid = true;
     s32 r_total_out = 0;
+
+    Cursor cursor;
+    /**
+     * font_size：光标绘制是从y的坐标自底向上绘制，所以是当前y的坐标减去字体的高度\n
+     * face->size->metrics.height >> 6: 计算字体的高度
+     */
+    u32 font_size = face->size->metrics.height >> 6;
+    u32 cursor_start_x = offset_x;
+    u32 cursor_start_y = offset_y + offset;
+    Init_Cursor(&cursor, cursor_start_x, cursor_start_y, 1200, font_size, offset);
 
     char log_list[LOG_LIST_MAX_LINES][LOG_LIST_MAX_LINE_LENGTH];
     u32 log_list_index = 0;
@@ -374,6 +392,8 @@ int main(int argc, char **argv) {
     int ssid_list_dif_log_list = 0;
     int num_lines_to_display = 0;
     bool print_return_sentence = true;
+
+    u32 time_right_position = next_x("0000-00-00 00:00:00", face, TIME_X);
 
     while (appletMainLoop()) {
 
@@ -384,13 +404,13 @@ int main(int argc, char **argv) {
         u32 kDown = padGetButtonsDown(&pad);
 
         //进入 clear WiFi profiler
-        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[1].y - 20)) {
+        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[clear_wifi_profiler_selection].y)) {
             main_menu->print_flag = false;
             cwp_menu->print_flag = true;
         }
 
         // break in order to return to hbmenu
-        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[2].y - 20))
+        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[exit_selection].y))
             break;
 
         // 返回到上一级
@@ -417,29 +437,32 @@ int main(int argc, char **argv) {
             }
         }
 
-        check_top_line(framebuf, stride, 900, 20);
         char *time = get_time();
-        draw_text(face, framebuf, 900, 20,
+        for (u32 i = 0; i <= 12; i++) {
+            for (u32 j = TIME_X; j < time_right_position; j++) {
+                u32 pos = i * stride / sizeof(u32) + j;
+                framebuf[pos] = RGBA8_MAXALPHA(0, 0, 165);
+            }
+        }
+        draw_text(face, framebuf, TIME_X, 20,
                   time);
 
         if (main_menu->print_flag) {
             memset(log_list, 0, sizeof(log_list));
             start_delete_ssid = true;
-
             // 绘制光标，使用光标的位置和尺寸确定绘制范围
             Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
-
-            draw_text(face, framebuf, main_menu->selection[0].x, main_menu->selection[0].y,
-                      main_menu->selection[0].name);
-            draw_text(face, framebuf, main_menu->selection[1].x, main_menu->selection[1].y,
-                      main_menu->selection[1].name);
-            draw_text(face, framebuf, main_menu->selection[2].x, main_menu->selection[2].y,
-                      main_menu->selection[2].name);
+            // 绘制主菜单选项
+            for (int i = 0; i <= exit_selection; ++i) {
+                draw_text(face, framebuf, main_menu->selection[i].x, main_menu->selection[i].y,
+                          main_menu->selection[i].name);
+            }
         }
 
         if (cwp_menu->print_flag) {
 
-            draw_text(face, framebuf, cwp_menu->selection[0].x, cwp_menu->selection[0].y, cwp_menu->selection[0].name);
+            draw_text(face, framebuf, cwp_menu->selection[cwp_title_selection].x,
+                      cwp_menu->selection[cwp_title_selection].y, cwp_menu->selection[cwp_title_selection].name);
             //检测switch当前的互联网状态（是否是飞行模式）
             res = nifmIsWirelessCommunicationEnabled(&enable);
             if (R_FAILED(res)) return error_screen("nifmIsWirelessCommunicationEnabled() failed: 0X%x\n", res);
@@ -486,12 +509,8 @@ int main(int argc, char **argv) {
                             if (R_FAILED(res)) return error_screen("serviceDispatchImpl() failed: 0X%x", res);
                         }
                     }
-
-//                printf("delete all wifi profiles!");
-
-                } else {
-//                printf("no wifi profiles are currently set up.");
                 }
+
                 strcpy(log_list[log_list_index], "airplane mode: enable");
                 log_list_index++;
                 char s[255];
@@ -513,7 +532,8 @@ int main(int argc, char **argv) {
                     } else break;
                 }
 
-                if(r_total_out - 1 < LOG_LIST_MAX_LINES - log_list_index && r_total_out - 1 > 0 && print_return_sentence){
+                if (r_total_out - 1 < LOG_LIST_MAX_LINES - log_list_index && r_total_out - 1 > 0 &&
+                    print_return_sentence) {
                     strcpy(log_list[log_list_index + r_total_out - 1], "delete all wifi profiles! press B to return");
                     print_return_sentence = false;
                 }
@@ -537,12 +557,16 @@ int main(int argc, char **argv) {
                 start_delete_ssid = false;
             }
 
-            u32 start_y = offset_y + offset - 15;
+            u32 start_y = offset_y + offset - (face->size->metrics.height >> 6);
             for (int i = 0; i < num_lines_to_display; ++i) {
                 draw_text(face, framebuf, offset_x, start_y, log_list[i]);
-                if (strncmp(log_list[i], "ssid:", strlen("ssid:")) == 0)
-                    draw_text_green(face, framebuf, offset_x + 700, start_y, "[CLEAR]");
-                start_y += 30;
+                if (strncmp(log_list[i], "ssid:", strlen("ssid:")) == 0) {
+                    char str[] = "...";
+                    u32 next = next_x(log_list[i], face, offset_x);
+                    draw_text(face, framebuf, next, start_y, str);
+                    draw_text_green(face, framebuf, next_x(str, face, next), start_y, "[CLEAR]");
+                }
+                start_y += (face->size->metrics.height >> 6);
 //                char str[255];
 //                sprintf(str, "%d", ssid_list_dif_log_list);
 //                draw_text(face, framebuf, offset_x, 684, str);
@@ -560,12 +584,7 @@ int main(int argc, char **argv) {
                     ssid_list_dif_log_list--;
                 }
 
-                if (num_lines_to_display == LOG_LIST_MAX_LINES && print_return_sentence && r_total_out - 1 > 0) {
-//                    if (r_total_out - 1 < LOG_LIST_MAX_LINES - 2) {
-//                        strcpy(log_list[2 + r_total_out - 1], "delete all wifi profiles! press B to return");
-//                    } else {
-//
-//                    };
+                if (ssid_list_dif_log_list == 0 && print_return_sentence && r_total_out - 1 > 0) {
                     for (int i = 0; i < LOG_LIST_MAX_LINES - 1; i++)
                         strcpy(log_list[i], log_list[i + 1]);
 
@@ -578,29 +597,16 @@ int main(int argc, char **argv) {
             time = NULL;
         }
 
-        cursor_end_height = offset_y + 2 * offset;
-
         if (kDown & HidNpadButton_Down || kDown & HidNpadButton_StickLDown) {
             Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
-            cursor.y += cursor.offset;
-            cursor.height += cursor.offset;
-            if (cursor.height > cursor_end_height + 1) {
-                cursor.y = cursor_start_y;
-                cursor.height = cursor_start_height;
-            }
+            decide_menu_down(&cursor, main_menu, exit_selection);
             if (main_menu->print_flag)
                 Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
         }
 
         if (kDown & HidNpadButton_Up || kDown & HidNpadButton_StickLUp) {
             Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
-
-            cursor.y -= cursor.offset;
-            cursor.height -= cursor.offset;
-            if (cursor.y < cursor_start_y) {
-                cursor.y = cursor_end_height - 20;
-                cursor.height = cursor_end_height;
-            }
+            decide_menu_up(&cursor, main_menu, exit_selection);
             if (main_menu->print_flag)
                 Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
         }
@@ -610,6 +616,7 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < r_total_out; ++i)
         free(ssid_list[i]);
+
     free(ssid_list);
     free(main_menu);
     romfsExit();
