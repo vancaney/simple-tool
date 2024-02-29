@@ -10,7 +10,7 @@
 typedef enum {
     main_menu_title_selection,
     clear_wifi_profiler_selection,
-    text_selection,
+//    text_selection,
     exit_selection
 } main_menu_selection_enum;
 
