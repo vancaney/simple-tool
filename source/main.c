@@ -456,6 +456,19 @@ int main(int argc, char **argv) {
                 draw_text(face, framebuf, main_menu->selection[i].x, main_menu->selection[i].y,
                           main_menu->selection[i].name);
             }
+            if (kDown & HidNpadButton_Down || kDown & HidNpadButton_StickLDown) {
+                Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
+                decide_menu_down(&cursor, main_menu, exit_selection);
+                if (main_menu->print_flag)
+                    Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
+            }
+
+            if (kDown & HidNpadButton_Up || kDown & HidNpadButton_StickLUp) {
+                Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
+                decide_menu_up(&cursor, main_menu, exit_selection);
+                if (main_menu->print_flag)
+                    Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
+            }
         }
 
         // 返回到上一级
@@ -545,19 +558,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        if (kDown & HidNpadButton_Down || kDown & HidNpadButton_StickLDown) {
-            Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
-            decide_menu_down(&cursor, main_menu, exit_selection);
-            if (main_menu->print_flag)
-                Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
-        }
 
-        if (kDown & HidNpadButton_Up || kDown & HidNpadButton_StickLUp) {
-            Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
-            decide_menu_up(&cursor, main_menu, exit_selection);
-            if (main_menu->print_flag)
-                Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
-        }
         free(time);
         framebufferEnd(&fb);
     }
