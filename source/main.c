@@ -8,11 +8,11 @@
 #include <time.h>
 #include FT_FREETYPE_H
 #include "cursor.h"
-#include "circularbuffer.h"
 
 // Define the desired framebuffer resolution (here we set it to 720p).
 #define FB_WIDTH  1280
 #define FB_HEIGHT 720
+#define FONT_PATH "romfs:/amiga4ever-pro2.ttf"
 //============================menu============================
 #define MAIN_MENU_SIZE 3
 #define MAIN_MENU_TITLE_X 540
@@ -288,6 +288,34 @@ bool contains_chinese(const char *str) {
     return false;
 }
 
+// 加载字体文件到内存中
+unsigned char *loadFontFile(const char *filename, long *fileSize) {
+    FILE *file = fopen(filename, "rb");
+    if (!file) {
+        error_screen("Failed to open font file: %s\n", filename);
+        return NULL;
+    }
+
+    //将文件指针移动到文件末尾
+    fseek(file, 0, SEEK_END);
+    //计算出文件大小
+    *fileSize = ftell(file);
+    //将文件指针移动到文件开头，一遍后续遍历文件数据
+    fseek(file, 0, SEEK_SET);
+
+    unsigned char *buffer = (unsigned char *) malloc(*fileSize);
+    if (!buffer) {
+        fclose(file);
+        error_screen("Failed to allocate memory for font file\n");
+        return NULL;
+    }
+
+    fread(buffer, 1, *fileSize, file);
+    fclose(file);
+
+    return buffer;
+}
+
 int main(int argc, char **argv) {
     Result rc = 0;
     FT_Error ret = 0;
@@ -332,8 +360,16 @@ int main(int argc, char **argv) {
         return error_screen("FT_New_Memory_Face() failed: %d\n", ret);
     }
 
+    // 从内存中加载第三方字体文件，如果从文件中直接加载字体文件输出的时候会很慢
+    long fileSize;
+    unsigned char *fontData = loadFontFile(FONT_PATH, &fileSize);
+    if (!fontData) {
+        FT_Done_FreeType(library);
+        return 1;
+    }
+
     FT_Face face;
-    ret = FT_New_Face(library, "romfs:/amiga4ever-pro2.ttf", 0, &face);
+    ret = FT_New_Memory_Face(library, fontData, (FT_Long) fileSize, 0, &face);
     if (ret) {
         FT_Done_FreeType(library);
         return error_screen("FT_New_Face() failed: %d\n", ret);
@@ -378,8 +414,8 @@ int main(int argc, char **argv) {
     strcpy(cwp_menu->selection[cwp_title_selection].name, "Clear Wifi Profile");
     cwp_menu->selection[cwp_title_selection].x = CWP_MENU_TITLE_X;
     cwp_menu->selection[cwp_title_selection].y = CWP_MENU_TITLE_Y;
-    bool enable;
     bool search_wifi = false;
+    bool detect_airplane_mode = false;
     s32 r_total_out = 0;
 
     Cursor cursor;
@@ -400,8 +436,6 @@ int main(int argc, char **argv) {
     bool print_return_sentence = false;
 
     u32 time_right_position = next_x("0000-00-00 00:00:00", face, TIME_X);
-    CircularQueue circularQueue;
-    initQueue(&circularQueue, SCROLL_LOG_LIST_MAX_LINES, SCROLL_LOG_LIST_MAX_LINE_LENGTH);
     SetSysNetworkSettings *NetworkSettings = NULL;
     char **ssid_list = NULL;
     int ssid_list_length = 0;
@@ -423,6 +457,30 @@ int main(int argc, char **argv) {
         // break in order to return to hbmenu
         if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[exit_selection].y))
             break;
+
+        // 返回到上一级
+        if (kDown & HidNpadButton_B && cwp_menu->print_flag) {
+            memset(scroll_log_list, 0, sizeof(scroll_log_list));
+            memset(scroll_log_have_chinese, false, sizeof(scroll_log_have_chinese));
+            main_menu->print_flag = true;
+            cwp_menu->print_flag = false;
+            search_wifi = false;
+            detect_airplane_mode = false;
+            print_return_sentence = false;
+            scroll_log_list_index = 0;
+            ssid_list_start_index = 0;
+            if (ssid_list != NULL) {
+                for (int i = 0; i < ssid_list_length; ++i) {
+                    free(ssid_list[i]);
+                }
+                free(ssid_list);
+                ssid_list = NULL;
+            }
+            if (NetworkSettings != NULL) {
+                free(NetworkSettings);
+                NetworkSettings = NULL;
+            }
+        }
 
         u32 stride;
         u32 *framebuf = (u32 *) framebufferBegin(&fb, &stride);
@@ -475,42 +533,23 @@ int main(int argc, char **argv) {
             }
         }
 
-        // 返回到上一级
-        if (kDown & HidNpadButton_B && cwp_menu->print_flag) {
-            memset(scroll_log_list, 0, sizeof(scroll_log_list));
-            memset(scroll_log_have_chinese, false, sizeof(scroll_log_have_chinese));
-            main_menu->print_flag = true;
-            cwp_menu->print_flag = false;
-            search_wifi = false;
-            print_return_sentence = false;
-            scroll_log_list_index = 0;
-            ssid_list_start_index = 0;
-            if (ssid_list != NULL) {
-                for (int i = 0; i < ssid_list_length; ++i) {
-                    free(ssid_list[i]);
-                }
-                free(ssid_list);
-                ssid_list = NULL;
-            }
-            if (NetworkSettings != NULL) {
-                free(NetworkSettings);
-                NetworkSettings = NULL;
-            }
-        }
-
         if (cwp_menu->print_flag) {
             draw_text(face, framebuf, cwp_menu->selection[cwp_title_selection].x,
                       cwp_menu->selection[cwp_title_selection].y, cwp_menu->selection[cwp_title_selection].name);
             //日志开始输出的y坐标
             u32 start_y = offset_y + offset - (face->size->metrics.height >> 6);
             //检测switch当前的互联网状态（是否是飞行模式）
-            res = nifmIsWirelessCommunicationEnabled(&enable);
-            if (R_FAILED(res)) return error_screen("nifmIsWirelessCommunicationEnabled() failed: 0X%x\n", res);
-            //如果不是飞行模式，就开启飞行模式
-            if (enable) {
-                enable = false;
-                res = nifmSetWirelessCommunicationEnabled(enable);
-                if (R_FAILED(res)) return error_screen("nifmSetWirelessCommunicationEnabled() failed: 0X%x\n", res);
+            if (!detect_airplane_mode) {
+                bool enable;
+                res = nifmIsWirelessCommunicationEnabled(&enable);
+                if (R_FAILED(res)) return error_screen("nifmIsWirelessCommunicationEnabled() failed: 0X%x\n", res);
+                //如果不是飞行模式，就开启飞行模式
+                if (enable) {
+                    enable = false;
+                    res = nifmSetWirelessCommunicationEnabled(enable);
+                    if (R_FAILED(res)) return error_screen("nifmSetWirelessCommunicationEnabled() failed: 0X%x\n", res);
+                }
+                detect_airplane_mode = true;
             }
 
             //查询一共有多少WiFi
@@ -547,7 +586,6 @@ int main(int argc, char **argv) {
                            "press plus(+) to remove all wifi profiler or press B to return Main Menu");
                 }
                 scroll_log_list_index++;
-
                 search_wifi = true;
             }
 
@@ -624,7 +662,7 @@ int main(int argc, char **argv) {
                 }
             }
 
-            for(int i = 0; i < SCROLL_LOG_LIST_MAX_LINES; ++i){
+            for (int i = 0; i < SCROLL_LOG_LIST_MAX_LINES; ++i) {
                 if (contains_chinese(scroll_log_list[i]))
                     scroll_log_have_chinese[i] = true;
                 else
@@ -647,17 +685,16 @@ int main(int argc, char **argv) {
 
                 if (strncmp(scroll_log_list[i], "ssid:", strlen("ssid:")) == 0) {
                     char str[] = "...";
-                    if (contains_chinese(scroll_log_list[i])) {
-                        u32 next = next_x(scroll_log_list[i], chinese_face, temp_offset_x);
-                        draw_text(face, framebuf, next, start_y, str);
-                        draw_text_green(face, framebuf, next_x(str, face, next), start_y, "[CLEAR]");
+                    u32 str_next;
+                    if (scroll_log_have_chinese[i]) {
+                        str_next = next_x(scroll_log_list[i], chinese_face, temp_offset_x);
                     } else {
-                        u32 next = next_x(scroll_log_list[i], face, temp_offset_x);
-                        draw_text(face, framebuf, next, start_y, str);
-                        draw_text_green(face, framebuf, next_x(str, face, next), start_y, "[CLEAR]");
+                        str_next = next_x(scroll_log_list[i], face, temp_offset_x);
                     }
+                    u32 str_next_next = next_x(str, face, str_next);
+                    draw_text(face, framebuf, str_next, start_y, str);
+                    draw_text_green(face, framebuf, str_next_next, start_y, "[CLEAR]");
                 }
-
                 start_y += (face->size->metrics.height >> 6);
             }
 
@@ -682,7 +719,6 @@ int main(int argc, char **argv) {
     if (NetworkSettings != NULL)
         free(NetworkSettings);
 
-    clearQueue(&circularQueue);
     free(main_menu);
     romfsExit();
     framebufferClose(&fb);
