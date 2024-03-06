@@ -21,7 +21,7 @@
 #define CWP_MENU_TITLE_X 500
 #define CWP_MENU_TITLE_Y 54
 #define TIME_X 900
-#define MENU_DISTANCE 30
+#define TIME_Y 20
 //============================menu============================
 
 //============================log_list============================
@@ -31,10 +31,14 @@
 
 #define HORIZON_LINE(y, x) (((y) >= 74) && ((y) <= 76) && ((x) >= 10) && ((x) <= FB_WIDTH - 10))
 //上下左右白色边框
-#define TOP_LINE(y, x) (((y) >= 10) && ((y) <= 12) && ((x) >= 10) && ((x) <= FB_WIDTH - 10))
-#define BOTTOM_LINE(y, x) (((y) >= FB_HEIGHT - 10) && ((y) <= FB_HEIGHT - 8) && ((x) >= 10) && ((x) <= (FB_WIDTH - 10)))
-#define LEFT_LINE(y, x) (((y) >= 10) && ((y) <= FB_HEIGHT - 8) && ((x) >= 10) && ((x) <= 12))
-#define RIGHT_LINE(y, x) (((y) >= 10) && ((y) <= FB_HEIGHT - 8) && ((x) >= FB_WIDTH - 12) && ((x) <= FB_WIDTH - 10))
+#define START_Y 10
+#define END_Y 12
+#define START_X 10
+#define END_X 12
+#define TOP_LINE(y, x) (((y) >= START_Y) && ((y) <= END_Y) && ((x) >= START_X) && ((x) <= FB_WIDTH - START_X))
+#define BOTTOM_LINE(y, x) (((y) >= FB_HEIGHT - START_Y) && ((y) <= FB_HEIGHT - ((2*(START_Y)) - END_Y)) && ((x) >= START_X) && ((x) <= (FB_WIDTH - START_X)))
+#define LEFT_LINE(y, x) (((y) >= START_Y) && ((y) <= FB_HEIGHT - ((2*(START_Y)) - END_Y)) && ((x) >= START_X) && ((x) <= END_X))
+#define RIGHT_LINE(y, x) (((y) >= START_Y) && ((y) <= FB_HEIGHT - ((2*(START_Y)) - END_Y)) && ((x) >= FB_WIDTH - END_X) && ((x) <= FB_WIDTH - START_X))
 
 static u32 framebuf_width = 0;
 
@@ -353,7 +357,7 @@ int main(int argc, char **argv) {
     ret = FT_New_Memory_Face(library,
                              font.address,    /* first byte in memory */
                              font.size,       /* size in bytes        */
-                             0,               /* face_index           */
+                             0,            /* face_index           */
                              &chinese_face);
     if (ret) {
         FT_Done_FreeType(library);
@@ -376,11 +380,11 @@ int main(int argc, char **argv) {
     }
 
     ret = FT_Set_Char_Size(
-            face,                     /* face对象      */
-            0,             /* 字符宽度 1/64  */
-            14 * 64,     /* 字符高度 1/64  */
-            96,      /* 水平分辨率      */
-            96);    /* 垂直分辨率      */
+            face,                     /* face对象     */
+            0,             /* 字符宽度 1/64 */
+            14 * 64,     /* 字符高度 1/64 */
+            96,      /* 水平分辨率     */
+            96);    /* 垂直分辨率     */
     if (ret) {
         FT_Done_Face(face);
         FT_Done_Face(chinese_face);
@@ -501,13 +505,13 @@ int main(int argc, char **argv) {
         }
 
         char *time = get_time();
-        for (u32 i = 0; i <= 12; i++) {
+        for (u32 i = START_Y; i <= END_Y; i++) {
             for (u32 j = TIME_X; j < time_right_position; j++) {
                 u32 pos = i * stride / sizeof(u32) + j;
                 framebuf[pos] = RGBA8_MAXALPHA(0, 0, 165);
             }
         }
-        draw_text(face, framebuf, TIME_X, 20,
+        draw_text(face, framebuf, TIME_X, TIME_Y,
                   time);
 
         if (main_menu->print_flag) {
@@ -652,14 +656,14 @@ int main(int argc, char **argv) {
                     }
                 }
 
-                print_return_sentence = true;
-                free(NetworkSettings);
-                NetworkSettings = NULL;
-
                 if (r_total_out <= SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index - 1 && r_total_out - 1 != 0) {
                     strcpy(scroll_log_list[scroll_log_list_index + r_total_out],
                            "delete all wifi profiles! press B to return.");
                 }
+
+                print_return_sentence = true;
+                free(NetworkSettings);
+                NetworkSettings = NULL;
             }
 
             for (int i = 0; i < SCROLL_LOG_LIST_MAX_LINES; ++i) {
