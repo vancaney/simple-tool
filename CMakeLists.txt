@@ -16,8 +16,6 @@ add_executable(untitled1 source/main.c
         source/cursor.c
         include/menu.h
         source/menu.c
-        include/circularbuffer.h
-        source/circularbuffer.c
 )
 
 

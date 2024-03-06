@@ -12,6 +12,7 @@
 // Define the desired framebuffer resolution (here we set it to 720p).
 #define FB_WIDTH  1280
 #define FB_HEIGHT 720
+#define FONT_PATH "romfs:/amiga4ever-pro2.ttf"
 //============================menu============================
 #define MAIN_MENU_SIZE 3
 #define MAIN_MENU_TITLE_X 540
@@ -287,6 +288,34 @@ bool contains_chinese(const char *str) {
     return false;
 }
 
+// 加载字体文件到内存中
+unsigned char *loadFontFile(const char *filename, long *fileSize) {
+    FILE *file = fopen(filename, "rb");
+    if (!file) {
+        error_screen("Failed to open font file: %s\n", filename);
+        return NULL;
+    }
+
+    //将文件指针移动到文件末尾
+    fseek(file, 0, SEEK_END);
+    //计算出文件大小
+    *fileSize = ftell(file);
+    //将文件指针移动到文件开头，一遍后续遍历文件数据
+    fseek(file, 0, SEEK_SET);
+
+    unsigned char *buffer = (unsigned char *) malloc(*fileSize);
+    if (!buffer) {
+        fclose(file);
+        error_screen("Failed to allocate memory for font file\n");
+        return NULL;
+    }
+
+    fread(buffer, 1, *fileSize, file);
+    fclose(file);
+
+    return buffer;
+}
+
 int main(int argc, char **argv) {
     Result rc = 0;
     FT_Error ret = 0;
@@ -331,8 +360,16 @@ int main(int argc, char **argv) {
         return error_screen("FT_New_Memory_Face() failed: %d\n", ret);
     }
 
+    // 从内存中加载第三方字体文件，如果从文件中直接加载字体文件输出的时候会很慢
+    long fileSize;
+    unsigned char *fontData = loadFontFile(FONT_PATH, &fileSize);
+    if (!fontData) {
+        FT_Done_FreeType(library);
+        return 1;
+    }
+
     FT_Face face;
-    ret = FT_New_Face(library, "romfs:/amiga4ever-pro2.ttf", 0, &face);
+    ret = FT_New_Memory_Face(library, fontData, (FT_Long) fileSize, 0, &face);
     if (ret) {
         FT_Done_FreeType(library);
         return error_screen("FT_New_Face() failed: %d\n", ret);
@@ -377,8 +414,8 @@ int main(int argc, char **argv) {
     strcpy(cwp_menu->selection[cwp_title_selection].name, "Clear Wifi Profile");
     cwp_menu->selection[cwp_title_selection].x = CWP_MENU_TITLE_X;
     cwp_menu->selection[cwp_title_selection].y = CWP_MENU_TITLE_Y;
-    bool enable;
     bool search_wifi = false;
+    bool detect_airplane_mode = false;
     s32 r_total_out = 0;
 
     Cursor cursor;
@@ -392,12 +429,17 @@ int main(int argc, char **argv) {
     Init_Cursor(&cursor, cursor_start_x, cursor_start_y, 1200, font_size, offset);
 
     char scroll_log_list[SCROLL_LOG_LIST_MAX_LINES][SCROLL_LOG_LIST_MAX_LINE_LENGTH];
+    memset(scroll_log_list, 0, sizeof(scroll_log_list));
     u32 scroll_log_list_index = 0;
-    int num_lines_to_display = 0;
+    bool scroll_log_have_chinese[SCROLL_LOG_LIST_MAX_LINES];
+    memset(scroll_log_have_chinese, false, sizeof(scroll_log_have_chinese));
     bool print_return_sentence = false;
 
     u32 time_right_position = next_x("0000-00-00 00:00:00", face, TIME_X);
     SetSysNetworkSettings *NetworkSettings = NULL;
+    char **ssid_list = NULL;
+    int ssid_list_length = 0;
+    int ssid_list_start_index = 0;
     while (appletMainLoop()) {
 
         // Scan the gamepad. This should be done once for each frame
@@ -415,6 +457,30 @@ int main(int argc, char **argv) {
         // break in order to return to hbmenu
         if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[exit_selection].y))
             break;
+
+        // 返回到上一级
+        if (kDown & HidNpadButton_B && cwp_menu->print_flag) {
+            memset(scroll_log_list, 0, sizeof(scroll_log_list));
+            memset(scroll_log_have_chinese, false, sizeof(scroll_log_have_chinese));
+            main_menu->print_flag = true;
+            cwp_menu->print_flag = false;
+            search_wifi = false;
+            detect_airplane_mode = false;
+            print_return_sentence = false;
+            scroll_log_list_index = 0;
+            ssid_list_start_index = 0;
+            if (ssid_list != NULL) {
+                for (int i = 0; i < ssid_list_length; ++i) {
+                    free(ssid_list[i]);
+                }
+                free(ssid_list);
+                ssid_list = NULL;
+            }
+            if (NetworkSettings != NULL) {
+                free(NetworkSettings);
+                NetworkSettings = NULL;
+            }
+        }
 
         u32 stride;
         u32 *framebuf = (u32 *) framebufferBegin(&fb, &stride);
@@ -445,7 +511,6 @@ int main(int argc, char **argv) {
                   time);
 
         if (main_menu->print_flag) {
-            memset(scroll_log_list, 0, sizeof(scroll_log_list));
             // 绘制光标，使用光标的位置和尺寸确定绘制范围
             Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
             // 绘制主菜单选项
@@ -453,16 +518,19 @@ int main(int argc, char **argv) {
                 draw_text(face, framebuf, main_menu->selection[i].x, main_menu->selection[i].y,
                           main_menu->selection[i].name);
             }
-        }
+            if (kDown & HidNpadButton_Down || kDown & HidNpadButton_StickLDown) {
+                Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
+                decide_menu_down(&cursor, main_menu, exit_selection);
+                if (main_menu->print_flag)
+                    Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
+            }
 
-        // 返回到上一级
-        if (kDown & HidNpadButton_B && cwp_menu->print_flag) {
-            main_menu->print_flag = true;
-            cwp_menu->print_flag = false;
-            search_wifi = false;
-            print_return_sentence = false;
-            free(NetworkSettings);
-            NetworkSettings = NULL;
+            if (kDown & HidNpadButton_Up || kDown & HidNpadButton_StickLUp) {
+                Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
+                decide_menu_up(&cursor, main_menu, exit_selection);
+                if (main_menu->print_flag)
+                    Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
+            }
         }
 
         if (cwp_menu->print_flag) {
@@ -471,17 +539,18 @@ int main(int argc, char **argv) {
             //日志开始输出的y坐标
             u32 start_y = offset_y + offset - (face->size->metrics.height >> 6);
             //检测switch当前的互联网状态（是否是飞行模式）
-            res = nifmIsWirelessCommunicationEnabled(&enable);
-            if (R_FAILED(res)) return error_screen("nifmIsWirelessCommunicationEnabled() failed: 0X%x\n", res);
-            //如果不是飞行模式，就开启飞行模式
-            if (enable) {
-                enable = false;
-                res = nifmSetWirelessCommunicationEnabled(enable);
-                if (R_FAILED(res)) return error_screen("nifmSetWirelessCommunicationEnabled() failed: 0X%x\n", res);
+            if (!detect_airplane_mode) {
+                bool enable;
+                res = nifmIsWirelessCommunicationEnabled(&enable);
+                if (R_FAILED(res)) return error_screen("nifmIsWirelessCommunicationEnabled() failed: 0X%x\n", res);
+                //如果不是飞行模式，就开启飞行模式
+                if (enable) {
+                    enable = false;
+                    res = nifmSetWirelessCommunicationEnabled(enable);
+                    if (R_FAILED(res)) return error_screen("nifmSetWirelessCommunicationEnabled() failed: 0X%x\n", res);
+                }
+                detect_airplane_mode = true;
             }
-            u32 temY = start_y;
-            draw_text(face, framebuf, offset_x, temY, "airplane mode: enable");
-            temY += (face->size->metrics.height >> 6);
 
             //查询一共有多少WiFi
             if (!search_wifi) {
@@ -503,23 +572,24 @@ int main(int argc, char **argv) {
                         count += 10;
                     }
                 } while (r_total_out == r_count);
+
+                strcpy(scroll_log_list[scroll_log_list_index], "airplane mode: enable");
+                scroll_log_list_index++;
+                char r_total_out_s[255];
+                sprintf(r_total_out_s, "total out: %d", r_total_out - 1);
+                strcpy(scroll_log_list[scroll_log_list_index], r_total_out_s);
+                scroll_log_list_index++;
+                if (r_total_out - 1 == 0 && !print_return_sentence) {
+                    strcpy(scroll_log_list[scroll_log_list_index], "no wifi profiles are currently set up.");
+                } else {
+                    strcpy(scroll_log_list[scroll_log_list_index],
+                           "press plus(+) to remove all wifi profiler or press B to return Main Menu");
+                }
+                scroll_log_list_index++;
                 search_wifi = true;
             }
 
-            char r_total_out_s[255];
-            sprintf(r_total_out_s, "total out: %d", r_total_out - 1);
-            draw_text(face, framebuf, offset_x, temY, r_total_out_s);
-            temY += (face->size->metrics.height >> 6);
-
-            if (r_total_out - 1 == 0 && !print_return_sentence) {
-                draw_text(face, framebuf, offset_x, temY, "no wifi profiles are currently set up.");
-            } else {
-                draw_text(face, framebuf, offset_x, temY,
-                          "press plus(+) to remove all wifi profiler or press B to return Main Menu");
-            }
-            temY += (face->size->metrics.height >> 6);
-
-            if (kDown & HidNpadButton_Plus && NetworkSettings != NULL && r_total_out - 1 != 0) {
+            if (kDown & HidNpadButton_Plus && NetworkSettings != NULL) {
                 Service *service = nifmGetServiceSession_GeneralService();
                 //删除switch的所有ssid
                 for (int i = 0; i < r_total_out; ++i) {
@@ -529,36 +599,123 @@ int main(int argc, char **argv) {
                                                   0,
                                                   (SfDispatchParams) {0});
                         if (R_FAILED(res)) {
+                            free(NetworkSettings);
+                            NetworkSettings = NULL;
                             return error_screen("serviceDispatchImpl() failed: 0X%x", res);
                         }
                     }
                 }
+
+                for (u32 i = 0; i < (r_total_out < SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index ? r_total_out :
+                                     SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index); ++i) {
+                    if (strlen((NetworkSettings + i)->access_point_ssid) > 0 &&
+                        strlen((NetworkSettings + i)->access_point_ssid) <= 33) {
+                        char ssid[255];
+                        sprintf(ssid, "ssid: %s", (NetworkSettings + i)->access_point_ssid);
+                        strcpy(scroll_log_list[i + scroll_log_list_index], ssid);
+                    } else {
+                        strcpy(scroll_log_list[i + scroll_log_list_index],
+                               (NetworkSettings + i)->access_point_ssid);
+                    }
+                }
+
+                if (r_total_out >= SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index) {
+                    ssid_list_length = (int) (r_total_out - (SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index)) + 1;
+                    if (ssid_list_length == 1) {
+                        ssid_list = malloc(ssid_list_length * sizeof(char *));
+                        for (int i = 0; i < ssid_list_length; ++i) {
+                            ssid_list[i] = malloc(255 * sizeof(char));
+                        }
+                        strcpy(ssid_list[ssid_list_length - 1], "delete all wifi profiles! press B to return.");
+                    } else {
+                        ssid_list = malloc(ssid_list_length * sizeof(char *));
+                        for (int i = 0; i < ssid_list_length; ++i) {
+                            ssid_list[i] = malloc(255 * sizeof(char));
+                        }
+
+                        for (int i = 0; i < ssid_list_length - 1; ++i) {
+                            if (strlen((NetworkSettings + SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index +
+                                        i)->access_point_ssid) > 0 &&
+                                strlen((NetworkSettings + SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index +
+                                        i)->access_point_ssid) <= 33) {
+                                char ssid[255];
+                                sprintf(ssid, "ssid: %s",
+                                        (NetworkSettings + SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index +
+                                         i)->access_point_ssid);
+                                strcpy(ssid_list[i], ssid);
+                            } else {
+                                strcpy(ssid_list[i],
+                                       (NetworkSettings + i)->access_point_ssid);
+                            }
+                        }
+                        strcpy(ssid_list[ssid_list_length - 1], "delete all wifi profiles! press B to return.");
+                    }
+                }
+
                 print_return_sentence = true;
-                r_total_out = 1;
+                free(NetworkSettings);
+                NetworkSettings = NULL;
+
+                if (r_total_out <= SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index - 1 && r_total_out - 1 != 0) {
+                    strcpy(scroll_log_list[scroll_log_list_index + r_total_out],
+                           "delete all wifi profiles! press B to return.");
+                }
             }
 
-            if (print_return_sentence) {
-                draw_text(face, framebuf, offset_x, temY, "delete all wifi profiles! press B to return");
+            for (int i = 0; i < SCROLL_LOG_LIST_MAX_LINES; ++i) {
+                if (contains_chinese(scroll_log_list[i]))
+                    scroll_log_have_chinese[i] = true;
+                else
+                    scroll_log_have_chinese[i] = false;
             }
-        }
 
-        if (kDown & HidNpadButton_Down || kDown & HidNpadButton_StickLDown) {
-            Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
-            decide_menu_down(&cursor, main_menu, exit_selection);
-            if (main_menu->print_flag)
-                Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
-        }
+            for (int i = 0; i < SCROLL_LOG_LIST_MAX_LINES; ++i) {
+                u32 temp_offset_x = offset_x;
+                if (scroll_log_have_chinese[i]) {
+                    if (strncmp(scroll_log_list[i], "ssid:", strlen("ssid:")) == 0) {
+                        draw_text(face, framebuf, offset_x, start_y, "ssid: ");
+                    }
+                    temp_offset_x = next_x("ssid: ", face, offset_x);
+                    char chinese_ssid[50];
+                    strncpy(chinese_ssid, scroll_log_list[i] + strlen("ssid: "), strlen(scroll_log_list[i]));
+                    draw_text(chinese_face, framebuf, temp_offset_x, start_y, chinese_ssid);
+                } else {
+                    draw_text(face, framebuf, offset_x, start_y, scroll_log_list[i]);
+                }
 
-        if (kDown & HidNpadButton_Up || kDown & HidNpadButton_StickLUp) {
-            Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
-            decide_menu_up(&cursor, main_menu, exit_selection);
-            if (main_menu->print_flag)
-                Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
+                if (strncmp(scroll_log_list[i], "ssid:", strlen("ssid:")) == 0) {
+                    char str[] = "...";
+                    u32 str_next;
+                    if (scroll_log_have_chinese[i]) {
+                        str_next = next_x(scroll_log_list[i], chinese_face, temp_offset_x);
+                    } else {
+                        str_next = next_x(scroll_log_list[i], face, temp_offset_x);
+                    }
+                    u32 str_next_next = next_x(str, face, str_next);
+                    draw_text(face, framebuf, str_next, start_y, str);
+                    draw_text_green(face, framebuf, str_next_next, start_y, "[CLEAR]");
+                }
+                start_y += (face->size->metrics.height >> 6);
+            }
+
+            if (r_total_out >= SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index &&
+                ssid_list_start_index < ssid_list_length && print_return_sentence) {
+                for (int i = 0; i < SCROLL_LOG_LIST_MAX_LINES - 1; ++i) {
+                    strcpy(scroll_log_list[i], scroll_log_list[i + 1]);
+                }
+                strcpy(scroll_log_list[SCROLL_LOG_LIST_MAX_LINES - 1], ssid_list[ssid_list_start_index]);
+                ssid_list_start_index++;
+            }
         }
         free(time);
         framebufferEnd(&fb);
     }
-
+    if (ssid_list != NULL) {
+        for (int i = 0; i < ssid_list_length; ++i) {
+            free(ssid_list[i]);
+        }
+        free(ssid_list);
+    }
     if (NetworkSettings != NULL)
         free(NetworkSettings);
 
