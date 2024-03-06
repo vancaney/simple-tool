@@ -8,7 +8,6 @@
 #include <time.h>
 #include FT_FREETYPE_H
 #include "cursor.h"
-#include "circularbuffer.h"
 
 // Define the desired framebuffer resolution (here we set it to 720p).
 #define FB_WIDTH  1280
@@ -398,8 +397,6 @@ int main(int argc, char **argv) {
     bool print_return_sentence = false;
 
     u32 time_right_position = next_x("0000-00-00 00:00:00", face, TIME_X);
-    CircularQueue circularQueue;
-    initQueue(&circularQueue, SCROLL_LOG_LIST_MAX_LINES, SCROLL_LOG_LIST_MAX_LINE_LENGTH);
     SetSysNetworkSettings *NetworkSettings = NULL;
     while (appletMainLoop()) {
 
@@ -565,7 +562,6 @@ int main(int argc, char **argv) {
     if (NetworkSettings != NULL)
         free(NetworkSettings);
 
-    clearQueue(&circularQueue);
     free(main_menu);
     romfsExit();
     framebufferClose(&fb);
