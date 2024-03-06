@@ -29,7 +29,6 @@
 #define SCROLL_LOG_LIST_MAX_LINE_LENGTH 255
 //============================log_list============================
 
-#define HORIZON_LINE(y, x) (((y) >= 74) && ((y) <= 76) && ((x) >= 10) && ((x) <= FB_WIDTH - 10))
 //上下左右白色边框
 #define START_Y 10
 #define END_Y 12
@@ -39,6 +38,9 @@
 #define BOTTOM_LINE(y, x) (((y) >= FB_HEIGHT - START_Y) && ((y) <= FB_HEIGHT - ((2*(START_Y)) - END_Y)) && ((x) >= START_X) && ((x) <= (FB_WIDTH - START_X)))
 #define LEFT_LINE(y, x) (((y) >= START_Y) && ((y) <= FB_HEIGHT - ((2*(START_Y)) - END_Y)) && ((x) >= START_X) && ((x) <= END_X))
 #define RIGHT_LINE(y, x) (((y) >= START_Y) && ((y) <= FB_HEIGHT - ((2*(START_Y)) - END_Y)) && ((x) >= FB_WIDTH - END_X) && ((x) <= FB_WIDTH - START_X))
+#define HORIZON_START_Y 74
+#define HORIZON_END_Y 76
+#define HORIZON_LINE(y, x) (((y) >= HORIZON_START_Y) && ((y) <= HORIZON_END_Y) && ((x) >= START_X) && ((x) <= FB_WIDTH - START_X))
 
 static u32 framebuf_width = 0;
 
@@ -50,7 +52,6 @@ static u32 offset = 60;
 
 static bool text_draw[FB_WIDTH][FB_HEIGHT];
 
-//Note that this doesn't handle any blending.
 void draw_glyph_green(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y) {
     u32 framex, framey;
     u32 tmpx, tmpy;
@@ -73,7 +74,6 @@ void draw_glyph_green(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y) {
                 }
             }
         }
-
         imageptr += bitmap->pitch;
     }
 }
@@ -203,7 +203,6 @@ u32 next_x(const char *previous_text, FT_Face face, u32 previous_x) {
             previous_text_width += face->glyph->advance.x >> 6;
         }
     }
-
     return previous_x + previous_text_width;
 }
 
@@ -553,6 +552,8 @@ int main(int argc, char **argv) {
                     res = nifmSetWirelessCommunicationEnabled(enable);
                     if (R_FAILED(res)) return error_screen("nifmSetWirelessCommunicationEnabled() failed: 0X%x\n", res);
                 }
+                strcpy(scroll_log_list[scroll_log_list_index], "airplane mode: enable");
+                scroll_log_list_index++;
                 detect_airplane_mode = true;
             }
 
@@ -577,8 +578,6 @@ int main(int argc, char **argv) {
                     }
                 } while (r_total_out == r_count);
 
-                strcpy(scroll_log_list[scroll_log_list_index], "airplane mode: enable");
-                scroll_log_list_index++;
                 char r_total_out_s[255];
                 sprintf(r_total_out_s, "total out: %d", r_total_out - 1);
                 strcpy(scroll_log_list[scroll_log_list_index], r_total_out_s);
@@ -587,7 +586,7 @@ int main(int argc, char **argv) {
                     strcpy(scroll_log_list[scroll_log_list_index], "no wifi profiles are currently set up.");
                 } else {
                     strcpy(scroll_log_list[scroll_log_list_index],
-                           "press plus(+) to remove all wifi profiler or press B to return Main Menu");
+                           "press plus(+) to remove all wifi profiles or press B to return Main Menu");
                 }
                 scroll_log_list_index++;
                 search_wifi = true;
@@ -637,26 +636,30 @@ int main(int argc, char **argv) {
                             ssid_list[i] = malloc(255 * sizeof(char));
                         }
 
+                        int NetworkSettings_offset = SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index;
                         for (int i = 0; i < ssid_list_length - 1; ++i) {
-                            if (strlen((NetworkSettings + SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index +
-                                        i)->access_point_ssid) > 0 &&
-                                strlen((NetworkSettings + SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index +
-                                        i)->access_point_ssid) <= 33) {
-                                char ssid[255];
-                                sprintf(ssid, "ssid: %s",
-                                        (NetworkSettings + SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index +
-                                         i)->access_point_ssid);
-                                strcpy(ssid_list[i], ssid);
+                            if (i == ssid_list_length - 1) {
+                                strcpy(ssid_list[ssid_list_length - 1], "delete all wifi profiles! press B to return.");
                             } else {
-                                strcpy(ssid_list[i],
-                                       (NetworkSettings + i)->access_point_ssid);
+                                if (strlen((NetworkSettings + NetworkSettings_offset +
+                                            i)->access_point_ssid) > 0 &&
+                                    strlen((NetworkSettings + NetworkSettings_offset +
+                                            i)->access_point_ssid) <= 33) {
+                                    char ssid[255];
+                                    sprintf(ssid, "ssid: %s",
+                                            (NetworkSettings + NetworkSettings_offset +
+                                             i)->access_point_ssid);
+                                    strcpy(ssid_list[i], ssid);
+                                } else {
+                                    strcpy(ssid_list[i],
+                                           (NetworkSettings + i)->access_point_ssid);
+                                }
                             }
                         }
-                        strcpy(ssid_list[ssid_list_length - 1], "delete all wifi profiles! press B to return.");
                     }
                 }
 
-                if (r_total_out <= SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index - 1 && r_total_out - 1 != 0) {
+                if (r_total_out < SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index && r_total_out - 1 > 0) {
                     strcpy(scroll_log_list[scroll_log_list_index + r_total_out],
                            "delete all wifi profiles! press B to return.");
                 }
