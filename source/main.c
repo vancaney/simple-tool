@@ -8,6 +8,7 @@
 #include <time.h>
 #include FT_FREETYPE_H
 #include "cursor.h"
+#include "logList.h"
 
 // Define the desired framebuffer resolution (here we set it to 720p).
 #define FB_WIDTH  1280
@@ -431,18 +432,15 @@ int main(int argc, char **argv) {
     u32 cursor_start_y = offset_y + offset;
     Init_Cursor(&cursor, cursor_start_x, cursor_start_y, 1200, font_size, offset);
 
-    char scroll_log_list[SCROLL_LOG_LIST_MAX_LINES][SCROLL_LOG_LIST_MAX_LINE_LENGTH];
-    memset(scroll_log_list, 0, sizeof(scroll_log_list));
-    u32 scroll_log_list_index = 0;
+    logList *ll = NULL;
     bool scroll_log_have_chinese[SCROLL_LOG_LIST_MAX_LINES];
     memset(scroll_log_have_chinese, false, sizeof(scroll_log_have_chinese));
-    bool print_return_sentence = false;
 
     u32 time_right_position = next_x("0000-00-00 00:00:00", face, TIME_X);
     SetSysNetworkSettings *NetworkSettings = NULL;
     char **ssid_list = NULL;
     int ssid_list_length = 0;
-    int ssid_list_start_index = 0;
+    int additional = 0;
     while (appletMainLoop()) {
 
         // Scan the gamepad. This should be done once for each frame
@@ -455,6 +453,7 @@ int main(int argc, char **argv) {
         if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[clear_wifi_profiler_selection].y)) {
             main_menu->print_flag = false;
             cwp_menu->print_flag = true;
+            ll = createLogList(SCROLL_LOG_LIST_MAX_LINES, SCROLL_LOG_LIST_MAX_LINE_LENGTH);
         }
 
         // break in order to return to hbmenu
@@ -463,15 +462,16 @@ int main(int argc, char **argv) {
 
         // 返回到上一级
         if (kDown & HidNpadButton_B && cwp_menu->print_flag) {
-            memset(scroll_log_list, 0, sizeof(scroll_log_list));
+            if (ll != NULL) {
+                free(ll);
+                ll = NULL;
+            }
             memset(scroll_log_have_chinese, false, sizeof(scroll_log_have_chinese));
             main_menu->print_flag = true;
             cwp_menu->print_flag = false;
             search_wifi = false;
             detect_airplane_mode = false;
-            print_return_sentence = false;
-            scroll_log_list_index = 0;
-            ssid_list_start_index = 0;
+            additional = 0;
             if (ssid_list != NULL) {
                 for (int i = 0; i < ssid_list_length; ++i) {
                     free(ssid_list[i]);
@@ -552,8 +552,7 @@ int main(int argc, char **argv) {
                     res = nifmSetWirelessCommunicationEnabled(enable);
                     if (R_FAILED(res)) return error_screen("nifmSetWirelessCommunicationEnabled() failed: 0X%x\n", res);
                 }
-                strcpy(scroll_log_list[scroll_log_list_index], "airplane mode: enable");
-                scroll_log_list_index++;
+                add(ll, "airplane mode: enable");
                 detect_airplane_mode = true;
             }
 
@@ -580,20 +579,27 @@ int main(int argc, char **argv) {
 
                 char r_total_out_s[255];
                 sprintf(r_total_out_s, "total out: %d", r_total_out - 1);
-                strcpy(scroll_log_list[scroll_log_list_index], r_total_out_s);
-                scroll_log_list_index++;
-                if (r_total_out - 1 == 0 && !print_return_sentence) {
-                    strcpy(scroll_log_list[scroll_log_list_index], "no wifi profiles are currently set up.");
+                add(ll, r_total_out_s);
+                if (r_total_out - 1 == 0) {
+                    add(ll, "no wifi profiles are currently set up.");
                 } else {
-                    strcpy(scroll_log_list[scroll_log_list_index],
-                           "press plus(+) to remove all wifi profiles or press B to return Main Menu");
+                    add(ll, "press plus(+) to remove all wifi profiles or press B to return Main Menu");
                 }
-                scroll_log_list_index++;
+                u32 tempY = start_y;
+                for (int i = 0; i <= ll->cur_index; ++i) {
+                    draw_text(face, framebuf, offset_x, tempY, ll->logs[i].log);
+                    tempY += (face->size->metrics.height >> 6);
+                }
                 search_wifi = true;
             }
 
-            if (kDown & HidNpadButton_Plus && NetworkSettings != NULL) {
+            if (kDown & HidNpadButton_Plus && NetworkSettings != NULL && r_total_out - 1 != 0) {
                 Service *service = nifmGetServiceSession_GeneralService();
+                ssid_list = malloc(r_total_out * sizeof(char *));
+                for (int i = 0; i < r_total_out; ++i) {
+                    ssid_list[i] = malloc(255 * sizeof(char));
+                }
+
                 //删除switch的所有ssid
                 for (int i = 0; i < r_total_out; ++i) {
                     if (strlen((NetworkSettings + i)->access_point_ssid) > 0 &&
@@ -606,97 +612,49 @@ int main(int argc, char **argv) {
                             NetworkSettings = NULL;
                             return error_screen("serviceDispatchImpl() failed: 0X%x", res);
                         }
-                    }
-                }
-
-                for (u32 i = 0; i < (r_total_out < SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index ? r_total_out :
-                                     SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index); ++i) {
-                    if (strlen((NetworkSettings + i)->access_point_ssid) > 0 &&
-                        strlen((NetworkSettings + i)->access_point_ssid) <= 33) {
                         char ssid[255];
                         sprintf(ssid, "ssid: %s", (NetworkSettings + i)->access_point_ssid);
-                        strcpy(scroll_log_list[i + scroll_log_list_index], ssid);
-                    } else {
-                        strcpy(scroll_log_list[i + scroll_log_list_index],
-                               (NetworkSettings + i)->access_point_ssid);
+                        strcpy(ssid_list[i - 1], ssid);
                     }
                 }
 
-                if (r_total_out >= SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index) {
-                    ssid_list_length = (int) (r_total_out - (SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index)) + 1;
-                    if (ssid_list_length == 1) {
-                        ssid_list = malloc(ssid_list_length * sizeof(char *));
-                        for (int i = 0; i < ssid_list_length; ++i) {
-                            ssid_list[i] = malloc(255 * sizeof(char));
-                        }
-                        strcpy(ssid_list[ssid_list_length - 1], "delete all wifi profiles! press B to return.");
-                    } else {
-                        ssid_list = malloc(ssid_list_length * sizeof(char *));
-                        for (int i = 0; i < ssid_list_length; ++i) {
-                            ssid_list[i] = malloc(255 * sizeof(char));
-                        }
+                strcpy(ssid_list[r_total_out - 1], "delete all wifi profiles! press B to return.");
 
-                        int NetworkSettings_offset = SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index;
-                        for (int i = 0; i < ssid_list_length; ++i) {
-                            if (i == ssid_list_length - 1) {
-                                strcpy(ssid_list[ssid_list_length - 1], "delete all wifi profiles! press B to return.");
-                            } else {
-                                if (strlen((NetworkSettings + NetworkSettings_offset +
-                                            i)->access_point_ssid) > 0 &&
-                                    strlen((NetworkSettings + NetworkSettings_offset +
-                                            i)->access_point_ssid) <= 33) {
-                                    char ssid[255];
-                                    sprintf(ssid, "ssid: %s",
-                                            (NetworkSettings + NetworkSettings_offset +
-                                             i)->access_point_ssid);
-                                    strcpy(ssid_list[i], ssid);
-                                } else {
-                                    strcpy(ssid_list[i],
-                                           (NetworkSettings + i)->access_point_ssid);
-                                }
-                            }
-                        }
-                    }
+                int other = SCROLL_LOG_LIST_MAX_LINES - ll->cur_index - 1;
+                for (int i = 0; i < (r_total_out <= other ? r_total_out : other); ++i) {
+                    add(ll, ssid_list[i]);
                 }
 
-                if (r_total_out < SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index && r_total_out - 1 > 0) {
-                    strcpy(scroll_log_list[scroll_log_list_index + r_total_out],
-                           "delete all wifi profiles! press B to return.");
+                if(r_total_out > other){
+                    additional = r_total_out - other;
                 }
 
-                print_return_sentence = true;
                 free(NetworkSettings);
                 NetworkSettings = NULL;
             }
 
-            for (int i = 0; i < SCROLL_LOG_LIST_MAX_LINES; ++i) {
-                if (contains_chinese(scroll_log_list[i]))
-                    scroll_log_have_chinese[i] = true;
-                else
-                    scroll_log_have_chinese[i] = false;
-            }
-
-            for (int i = 0; i < SCROLL_LOG_LIST_MAX_LINES; ++i) {
+            for (int i = 0; i <= ll->cur_index; ++i) {
                 u32 temp_offset_x = offset_x;
-                if (scroll_log_have_chinese[i]) {
-                    if (strncmp(scroll_log_list[i], "ssid:", strlen("ssid:")) == 0) {
+                bool chinese_str = contains_chinese(ll->logs[i].log);
+                if (chinese_str) {
+                    if (strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0) {
                         draw_text(face, framebuf, offset_x, start_y, "ssid: ");
                     }
                     temp_offset_x = next_x("ssid: ", face, offset_x);
                     char chinese_ssid[50];
-                    strncpy(chinese_ssid, scroll_log_list[i] + strlen("ssid: "), strlen(scroll_log_list[i]));
+                    strncpy(chinese_ssid, ll->logs[i].log + strlen("ssid: "), strlen(ll->logs[i].log));
                     draw_text(chinese_face, framebuf, temp_offset_x, start_y, chinese_ssid);
                 } else {
-                    draw_text(face, framebuf, offset_x, start_y, scroll_log_list[i]);
+                    draw_text(face, framebuf, offset_x, start_y, ll->logs[i].log);
                 }
 
-                if (strncmp(scroll_log_list[i], "ssid:", strlen("ssid:")) == 0) {
+                if (strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0) {
                     char str[] = "...";
                     u32 str_next;
-                    if (scroll_log_have_chinese[i]) {
-                        str_next = next_x(scroll_log_list[i], chinese_face, temp_offset_x);
+                    if (chinese_str) {
+                        str_next = next_x(ll->logs[i].log, chinese_face, temp_offset_x);
                     } else {
-                        str_next = next_x(scroll_log_list[i], face, temp_offset_x);
+                        str_next = next_x(ll->logs[i].log, face, temp_offset_x);
                     }
                     u32 str_next_next = next_x(str, face, str_next);
                     draw_text(face, framebuf, str_next, start_y, str);
@@ -705,17 +663,17 @@ int main(int argc, char **argv) {
                 start_y += (face->size->metrics.height >> 6);
             }
 
-            if (r_total_out >= SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index &&
-                ssid_list_start_index < ssid_list_length && print_return_sentence) {
-                for (int i = 0; i < SCROLL_LOG_LIST_MAX_LINES - 1; ++i) {
-                    strcpy(scroll_log_list[i], scroll_log_list[i + 1]);
-                }
-                strcpy(scroll_log_list[SCROLL_LOG_LIST_MAX_LINES - 1], ssid_list[ssid_list_start_index]);
-                ssid_list_start_index++;
+            if (additional > 0) {
+                add(ll, ssid_list[r_total_out - additional]);
+                additional--;
             }
         }
         free(time);
         framebufferEnd(&fb);
+    }
+    if (ll != NULL) {
+        free(ll);
+        ll = NULL;
     }
     if (ssid_list != NULL) {
         for (int i = 0; i < ssid_list_length; ++i) {
