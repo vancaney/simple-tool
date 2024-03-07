@@ -461,7 +461,7 @@ int main(int argc, char **argv) {
         // 返回到上一级
         if (kDown & HidNpadButton_B && cwp_menu->print_flag) {
             if (ll != NULL) {
-                free(ll);
+                clearLogList(ll);
                 ll = NULL;
             }
             main_menu->print_flag = true;
@@ -669,7 +669,7 @@ int main(int argc, char **argv) {
         framebufferEnd(&fb);
     }
     if (ll != NULL) {
-        free(ll);
+        clearLogList(ll);
         ll = NULL;
     }
     if (ssid_list != NULL) {
