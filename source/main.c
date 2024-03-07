@@ -637,7 +637,7 @@ int main(int argc, char **argv) {
                         }
 
                         int NetworkSettings_offset = SCROLL_LOG_LIST_MAX_LINES - scroll_log_list_index;
-                        for (int i = 0; i < ssid_list_length - 1; ++i) {
+                        for (int i = 0; i < ssid_list_length; ++i) {
                             if (i == ssid_list_length - 1) {
                                 strcpy(ssid_list[ssid_list_length - 1], "delete all wifi profiles! press B to return.");
                             } else {
