@@ -433,8 +433,6 @@ int main(int argc, char **argv) {
     Init_Cursor(&cursor, cursor_start_x, cursor_start_y, 1200, font_size, offset);
 
     logList *ll = NULL;
-    bool scroll_log_have_chinese[SCROLL_LOG_LIST_MAX_LINES];
-    memset(scroll_log_have_chinese, false, sizeof(scroll_log_have_chinese));
 
     u32 time_right_position = next_x("0000-00-00 00:00:00", face, TIME_X);
     SetSysNetworkSettings *NetworkSettings = NULL;
@@ -466,7 +464,6 @@ int main(int argc, char **argv) {
                 free(ll);
                 ll = NULL;
             }
-            memset(scroll_log_have_chinese, false, sizeof(scroll_log_have_chinese));
             main_menu->print_flag = true;
             cwp_menu->print_flag = false;
             search_wifi = false;
