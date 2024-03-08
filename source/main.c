@@ -23,6 +23,8 @@
 #define CWP_MENU_TITLE_Y 54
 #define TIME_X 900
 #define TIME_Y 20
+#define BATTERY_ICON_X 1000
+#define BATTERY_ICON_Y 720
 //============================menu============================
 
 //============================log_list============================
@@ -31,14 +33,14 @@
 //============================log_list============================
 
 //上下左右白色边框
-#define START_Y 10
-#define END_Y 12
+#define TOP_START_Y 10
+#define TOP_END_Y 12
 #define START_X 10
 #define END_X 12
-#define TOP_LINE(y, x) (((y) >= START_Y) && ((y) <= END_Y) && ((x) >= START_X) && ((x) <= FB_WIDTH - START_X))
-#define BOTTOM_LINE(y, x) (((y) >= FB_HEIGHT - START_Y) && ((y) <= FB_HEIGHT - ((2*(START_Y)) - END_Y)) && ((x) >= START_X) && ((x) <= (FB_WIDTH - START_X)))
-#define LEFT_LINE(y, x) (((y) >= START_Y) && ((y) <= FB_HEIGHT - ((2*(START_Y)) - END_Y)) && ((x) >= START_X) && ((x) <= END_X))
-#define RIGHT_LINE(y, x) (((y) >= START_Y) && ((y) <= FB_HEIGHT - ((2*(START_Y)) - END_Y)) && ((x) >= FB_WIDTH - END_X) && ((x) <= FB_WIDTH - START_X))
+#define TOP_LINE(y, x) (((y) >= TOP_START_Y) && ((y) <= TOP_END_Y) && ((x) >= START_X) && ((x) <= FB_WIDTH - START_X))
+#define BOTTOM_LINE(y, x) (((y) >= FB_HEIGHT - TOP_START_Y) && ((y) <= FB_HEIGHT - ((2*(TOP_START_Y)) - TOP_END_Y)) && ((x) >= START_X) && ((x) <= (FB_WIDTH - START_X)))
+#define LEFT_LINE(y, x) (((y) >= TOP_START_Y) && ((y) <= FB_HEIGHT - ((2*(TOP_START_Y)) - TOP_END_Y)) && ((x) >= START_X) && ((x) <= END_X))
+#define RIGHT_LINE(y, x) (((y) >= TOP_START_Y) && ((y) <= FB_HEIGHT - ((2*(TOP_START_Y)) - TOP_END_Y)) && ((x) >= FB_WIDTH - END_X) && ((x) <= FB_WIDTH - START_X))
 #define HORIZON_START_Y 74
 #define HORIZON_END_Y 76
 #define HORIZON_LINE(y, x) (((y) >= HORIZON_START_Y) && ((y) <= HORIZON_END_Y) && ((x) >= START_X) && ((x) <= FB_WIDTH - START_X))
@@ -46,6 +48,8 @@
 static u32 framebuf_width = 0;
 
 static PadState pad;
+static u32 batteryPercentage;
+static bool power_charge;
 
 static u32 offset_x = 64;
 static u32 offset_y = 54;
@@ -117,6 +121,76 @@ void draw_text_green(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str)
         if (ret) return;
 
         draw_glyph_green(&slot->bitmap, framebuf, tmpx + slot->bitmap_left, y - slot->bitmap_top);
+
+        tmpx += slot->advance.x >> 6;
+        y += slot->advance.y >> 6;
+    }
+}
+
+void draw_glyph_black(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y) {
+    u32 framex, framey;
+    u32 tmpx, tmpy;
+    u8 *imageptr = bitmap->buffer;
+
+    if (bitmap->pixel_mode != FT_PIXEL_MODE_GRAY) return;
+
+    for (tmpy = 0; tmpy < bitmap->rows; tmpy++) {
+        for (tmpx = 0; tmpx < bitmap->width; tmpx++) {
+            framex = x + tmpx;
+            framey = y + tmpy;
+
+            // Check if the pixel is within the framebuffer boundaries
+            if (framex >= 0 && framex < framebuf_width && framey >= 0 && framey < FB_HEIGHT) {
+                u8 pixel = imageptr[tmpx];
+                // Only draw non-blank pixels
+                if (pixel != 0) {
+                    framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(0, 0, 0);
+                    text_draw[framex][framey] = true;
+                }
+            }
+        }
+        imageptr += bitmap->pitch;
+    }
+}
+
+void draw_text_black(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str) {
+    u32 tmpx = x;
+    FT_Error ret = 0;
+    FT_UInt glyph_index;
+    FT_GlyphSlot slot = face->glyph;
+
+    u32 i;
+    u32 str_size = strlen(str);
+    uint32_t tmpchar;
+    ssize_t unitcount = 0;
+
+    for (i = 0; i < str_size;) {
+        unitcount = decode_utf8(&tmpchar, (const uint8_t *) &str[i]);
+        if (unitcount <= 0) break;
+        i += unitcount;
+
+        if (tmpchar == '\n') {
+            tmpx = x;
+            y += face->size->metrics.height / 64;
+            continue;
+        }
+
+        glyph_index = FT_Get_Char_Index(face, tmpchar);
+        //If using multiple fonts, you could check for glyph_index==0 here and attempt using the FT_Face for the other fonts with FT_Get_Char_Index.
+
+        ret = FT_Load_Glyph(
+                face,          /* handle to face object */
+                glyph_index,   /* glyph index           */
+                FT_LOAD_DEFAULT);
+
+        if (ret == 0) {
+            ret = FT_Render_Glyph(face->glyph,   /* glyph slot  */
+                                  FT_RENDER_MODE_NORMAL);  /* render mode */
+        }
+
+        if (ret) return;
+
+        draw_glyph_black(&slot->bitmap, framebuf, tmpx + slot->bitmap_left, y - slot->bitmap_top);
 
         tmpx += slot->advance.x >> 6;
         y += slot->advance.y >> 6;
@@ -332,6 +406,9 @@ int main(int argc, char **argv) {
     res = nifmInitialize(NifmServiceType_Admin);
     if (R_FAILED(res)) return error_screen("nifmInitialize() failed: 0X%x\n", res);
 
+    res = psmInitialize();
+    if (R_FAILED(res)) return error_screen("psmInitialize() failed: 0X%x\n", res);
+
     // Configure our supported input layout: a single player with standard controller styles
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
 
@@ -501,7 +578,7 @@ int main(int argc, char **argv) {
         }
 
         char *time = get_time();
-        for (u32 i = START_Y; i <= END_Y; i++) {
+        for (u32 i = TOP_START_Y; i <= TOP_END_Y; i++) {
             for (u32 j = TIME_X; j < time_right_position; j++) {
                 u32 pos = i * stride / sizeof(u32) + j;
                 framebuf[pos] = RGBA8_MAXALPHA(0, 0, 165);
@@ -509,6 +586,38 @@ int main(int argc, char **argv) {
         }
         draw_text(face, framebuf, TIME_X, TIME_Y,
                   time);
+
+        for (u32 i = FB_HEIGHT - TOP_START_Y; i <= FB_HEIGHT - (2*TOP_START_Y - TOP_END_Y); i++) {
+            for (u32 j = BATTERY_ICON_X; j < BATTERY_ICON_X + 200; j++) {
+                u32 pos = i * stride / sizeof(u32) + j;
+                framebuf[pos] = RGBA8_MAXALPHA(0, 0, 165);
+            }
+        }
+        psmGetBatteryChargePercentage(&batteryPercentage);
+        draw_text(face, framebuf, BATTERY_ICON_X, BATTERY_ICON_Y, "[");
+        u32 w = next_x("[", face, BATTERY_ICON_X);
+        draw_text(face, framebuf, 100 + w, BATTERY_ICON_Y, "}");
+        char v[255];
+        sprintf(v, "%d%%", batteryPercentage);
+        u32 battery_percentage_x = next_x("}", face, 100 + w) + 10;
+        draw_text(face, framebuf, battery_percentage_x, BATTERY_ICON_Y, v);
+
+        u32 end = w + batteryPercentage;
+
+        for (u32 i = BATTERY_ICON_Y - (face->size->metrics.height >> 6); i < BATTERY_ICON_Y; i++) {
+            for (u32 j = w; j < end; j++) {
+                u32 pos = i * stride / sizeof(u32) + j;
+                if(batteryPercentage <= 100 && batteryPercentage >= 60)
+                    framebuf[pos] = RGBA8_MAXALPHA(0, 255, 0);
+                else if (batteryPercentage < 60 && batteryPercentage > 20)
+                    framebuf[pos] = RGBA8_MAXALPHA(255, 255, 0);
+                else
+                    framebuf[pos] = RGBA8_MAXALPHA(255, 0, 0);
+            }
+        }
+        psmIsEnoughPowerSupplied(&power_charge);
+        if(power_charge)
+            draw_text_black(face, framebuf, w + 100 / 2 - 10, BATTERY_ICON_Y - 2, ":D-");
 
         if (main_menu->print_flag) {
             // 绘制光标，使用光标的位置和尺寸确定绘制范围
@@ -682,6 +791,7 @@ int main(int argc, char **argv) {
         free(NetworkSettings);
 
     free(main_menu);
+    psmExit();
     romfsExit();
     framebufferClose(&fb);
     FT_Done_Face(chinese_face);
