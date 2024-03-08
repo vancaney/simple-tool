@@ -23,7 +23,7 @@
 #define CWP_MENU_TITLE_Y 54
 #define TIME_X 900
 #define TIME_Y 20
-#define BATTERY_ICON_X 1000
+#define BATTERY_ICON_X 1020
 #define BATTERY_ICON_Y 720
 //============================menu============================
 
@@ -57,7 +57,16 @@ static u32 offset = 60;
 
 static bool text_draw[FB_WIDTH][FB_HEIGHT];
 
-void draw_glyph_green(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y) {
+typedef enum {
+    WITHE,
+    BLACK,
+    RED,
+    YELLOW,
+    GREEN,
+    BLUE
+} Color;
+
+void draw_glyph(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y, Color color) {
     u32 framex, framey;
     u32 tmpx, tmpy;
     u8 *imageptr = bitmap->buffer;
@@ -74,16 +83,37 @@ void draw_glyph_green(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y) {
                 u8 pixel = imageptr[tmpx];
                 // Only draw non-blank pixels
                 if (pixel != 0) {
-                    framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(0, pixel, 0);
+                    switch (color) {
+                        case WITHE:
+                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(pixel, pixel, pixel);
+                            break;
+                        case BLACK:
+                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(0, 0, 0);
+                            break;
+                        case RED:
+                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(pixel, 0, 0);
+                            break;
+                        case YELLOW:
+                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(pixel, pixel, 0);
+                            break;
+                        case GREEN:
+                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(0, pixel, 0);
+                            break;
+                        case BLUE:
+                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(0, 0, pixel);
+                            break;
+                    }
+
                     text_draw[framex][framey] = true;
                 }
             }
         }
+
         imageptr += bitmap->pitch;
     }
 }
 
-void draw_text_green(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str) {
+void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str, Color color) {
     u32 tmpx = x;
     FT_Error ret = 0;
     FT_UInt glyph_index;
@@ -120,148 +150,7 @@ void draw_text_green(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str)
 
         if (ret) return;
 
-        draw_glyph_green(&slot->bitmap, framebuf, tmpx + slot->bitmap_left, y - slot->bitmap_top);
-
-        tmpx += slot->advance.x >> 6;
-        y += slot->advance.y >> 6;
-    }
-}
-
-void draw_glyph_black(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y) {
-    u32 framex, framey;
-    u32 tmpx, tmpy;
-    u8 *imageptr = bitmap->buffer;
-
-    if (bitmap->pixel_mode != FT_PIXEL_MODE_GRAY) return;
-
-    for (tmpy = 0; tmpy < bitmap->rows; tmpy++) {
-        for (tmpx = 0; tmpx < bitmap->width; tmpx++) {
-            framex = x + tmpx;
-            framey = y + tmpy;
-
-            // Check if the pixel is within the framebuffer boundaries
-            if (framex >= 0 && framex < framebuf_width && framey >= 0 && framey < FB_HEIGHT) {
-                u8 pixel = imageptr[tmpx];
-                // Only draw non-blank pixels
-                if (pixel != 0) {
-                    framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(0, 0, 0);
-                    text_draw[framex][framey] = true;
-                }
-            }
-        }
-        imageptr += bitmap->pitch;
-    }
-}
-
-void draw_text_black(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str) {
-    u32 tmpx = x;
-    FT_Error ret = 0;
-    FT_UInt glyph_index;
-    FT_GlyphSlot slot = face->glyph;
-
-    u32 i;
-    u32 str_size = strlen(str);
-    uint32_t tmpchar;
-    ssize_t unitcount = 0;
-
-    for (i = 0; i < str_size;) {
-        unitcount = decode_utf8(&tmpchar, (const uint8_t *) &str[i]);
-        if (unitcount <= 0) break;
-        i += unitcount;
-
-        if (tmpchar == '\n') {
-            tmpx = x;
-            y += face->size->metrics.height / 64;
-            continue;
-        }
-
-        glyph_index = FT_Get_Char_Index(face, tmpchar);
-        //If using multiple fonts, you could check for glyph_index==0 here and attempt using the FT_Face for the other fonts with FT_Get_Char_Index.
-
-        ret = FT_Load_Glyph(
-                face,          /* handle to face object */
-                glyph_index,   /* glyph index           */
-                FT_LOAD_DEFAULT);
-
-        if (ret == 0) {
-            ret = FT_Render_Glyph(face->glyph,   /* glyph slot  */
-                                  FT_RENDER_MODE_NORMAL);  /* render mode */
-        }
-
-        if (ret) return;
-
-        draw_glyph_black(&slot->bitmap, framebuf, tmpx + slot->bitmap_left, y - slot->bitmap_top);
-
-        tmpx += slot->advance.x >> 6;
-        y += slot->advance.y >> 6;
-    }
-}
-
-void draw_glyph(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y) {
-    u32 framex, framey;
-    u32 tmpx, tmpy;
-    u8 *imageptr = bitmap->buffer;
-
-    if (bitmap->pixel_mode != FT_PIXEL_MODE_GRAY) return;
-
-    for (tmpy = 0; tmpy < bitmap->rows; tmpy++) {
-        for (tmpx = 0; tmpx < bitmap->width; tmpx++) {
-            framex = x + tmpx;
-            framey = y + tmpy;
-
-            // Check if the pixel is within the framebuffer boundaries
-            if (framex >= 0 && framex < framebuf_width && framey >= 0 && framey < FB_HEIGHT) {
-                u8 pixel = imageptr[tmpx];
-                // Only draw non-blank pixels
-                if (pixel != 0) {
-                    framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(pixel, pixel, pixel);
-                    text_draw[framex][framey] = true;
-                }
-            }
-        }
-
-        imageptr += bitmap->pitch;
-    }
-}
-
-void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str) {
-    u32 tmpx = x;
-    FT_Error ret = 0;
-    FT_UInt glyph_index;
-    FT_GlyphSlot slot = face->glyph;
-
-    u32 i;
-    u32 str_size = strlen(str);
-    uint32_t tmpchar;
-    ssize_t unitcount = 0;
-
-    for (i = 0; i < str_size;) {
-        unitcount = decode_utf8(&tmpchar, (const uint8_t *) &str[i]);
-        if (unitcount <= 0) break;
-        i += unitcount;
-
-        if (tmpchar == '\n') {
-            tmpx = x;
-            y += face->size->metrics.height / 64;
-            continue;
-        }
-
-        glyph_index = FT_Get_Char_Index(face, tmpchar);
-        //If using multiple fonts, you could check for glyph_index==0 here and attempt using the FT_Face for the other fonts with FT_Get_Char_Index.
-
-        ret = FT_Load_Glyph(
-                face,          /* handle to face object */
-                glyph_index,   /* glyph index           */
-                FT_LOAD_DEFAULT);
-
-        if (ret == 0) {
-            ret = FT_Render_Glyph(face->glyph,   /* glyph slot  */
-                                  FT_RENDER_MODE_NORMAL);  /* render mode */
-        }
-
-        if (ret) return;
-
-        draw_glyph(&slot->bitmap, framebuf, tmpx + slot->bitmap_left, y - slot->bitmap_top);
+        draw_glyph(&slot->bitmap, framebuf, tmpx + slot->bitmap_left, y - slot->bitmap_top, color);
 
         tmpx += slot->advance.x >> 6;
         y += slot->advance.y >> 6;
@@ -585,29 +474,27 @@ int main(int argc, char **argv) {
             }
         }
         draw_text(face, framebuf, TIME_X, TIME_Y,
-                  time);
+                  time, WITHE);
 
-        for (u32 i = FB_HEIGHT - TOP_START_Y; i <= FB_HEIGHT - (2*TOP_START_Y - TOP_END_Y); i++) {
+        for (u32 i = FB_HEIGHT - TOP_START_Y; i <= FB_HEIGHT - (2 * TOP_START_Y - TOP_END_Y); i++) {
             for (u32 j = BATTERY_ICON_X; j < BATTERY_ICON_X + 200; j++) {
                 u32 pos = i * stride / sizeof(u32) + j;
                 framebuf[pos] = RGBA8_MAXALPHA(0, 0, 165);
             }
         }
         psmGetBatteryChargePercentage(&batteryPercentage);
-        draw_text(face, framebuf, BATTERY_ICON_X, BATTERY_ICON_Y, "[");
+        draw_text(face, framebuf, BATTERY_ICON_X, BATTERY_ICON_Y, "[", WITHE);
         u32 w = next_x("[", face, BATTERY_ICON_X);
-        draw_text(face, framebuf, 100 + w, BATTERY_ICON_Y, "}");
+        draw_text(face, framebuf, 100 + w, BATTERY_ICON_Y, "}", WITHE);
         char v[255];
         sprintf(v, "%d%%", batteryPercentage);
         u32 battery_percentage_x = next_x("}", face, 100 + w) + 10;
-        draw_text(face, framebuf, battery_percentage_x, BATTERY_ICON_Y, v);
-
+        draw_text(face, framebuf, battery_percentage_x, BATTERY_ICON_Y, v, WITHE);
         u32 end = w + batteryPercentage;
-
         for (u32 i = BATTERY_ICON_Y - (face->size->metrics.height >> 6); i < BATTERY_ICON_Y; i++) {
             for (u32 j = w; j < end; j++) {
                 u32 pos = i * stride / sizeof(u32) + j;
-                if(batteryPercentage <= 100 && batteryPercentage >= 60)
+                if (batteryPercentage <= 100 && batteryPercentage >= 60)
                     framebuf[pos] = RGBA8_MAXALPHA(0, 255, 0);
                 else if (batteryPercentage < 60 && batteryPercentage > 20)
                     framebuf[pos] = RGBA8_MAXALPHA(255, 255, 0);
@@ -616,8 +503,8 @@ int main(int argc, char **argv) {
             }
         }
         psmIsEnoughPowerSupplied(&power_charge);
-        if(power_charge)
-            draw_text_black(face, framebuf, w + 100 / 2 - 10, BATTERY_ICON_Y - 2, ":D-");
+        if (power_charge)
+            draw_text(face, framebuf, w + 100 / 2 - 10, BATTERY_ICON_Y - 2, ":D-", BLACK);
 
         if (main_menu->print_flag) {
             // 绘制光标，使用光标的位置和尺寸确定绘制范围
@@ -625,7 +512,7 @@ int main(int argc, char **argv) {
             // 绘制主菜单选项
             for (int i = 0; i <= exit_selection; ++i) {
                 draw_text(face, framebuf, main_menu->selection[i].x, main_menu->selection[i].y,
-                          main_menu->selection[i].name);
+                          main_menu->selection[i].name, WITHE);
             }
             if (kDown & HidNpadButton_Down || kDown & HidNpadButton_StickLDown) {
                 Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
@@ -644,7 +531,7 @@ int main(int argc, char **argv) {
 
         if (cwp_menu->print_flag) {
             draw_text(face, framebuf, cwp_menu->selection[cwp_title_selection].x,
-                      cwp_menu->selection[cwp_title_selection].y, cwp_menu->selection[cwp_title_selection].name);
+                      cwp_menu->selection[cwp_title_selection].y, cwp_menu->selection[cwp_title_selection].name, WITHE);
             //日志开始输出的y坐标
             u32 start_y = offset_y + offset - (face->size->metrics.height >> 6);
             //检测switch当前的互联网状态（是否是飞行模式）
@@ -693,7 +580,7 @@ int main(int argc, char **argv) {
                 }
                 u32 tempY = start_y;
                 for (int i = 0; i <= ll->cur_index; ++i) {
-                    draw_text(face, framebuf, offset_x, tempY, ll->logs[i].log);
+                    draw_text(face, framebuf, offset_x, tempY, ll->logs[i].log, WITHE);
                     tempY += (face->size->metrics.height >> 6);
                 }
                 search_wifi = true;
@@ -731,7 +618,7 @@ int main(int argc, char **argv) {
                     add(ll, ssid_list[i]);
                 }
 
-                if(r_total_out > other){
+                if (r_total_out > other) {
                     additional = r_total_out - other;
                 }
 
@@ -744,14 +631,14 @@ int main(int argc, char **argv) {
                 bool chinese_str = contains_chinese(ll->logs[i].log);
                 if (chinese_str) {
                     if (strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0) {
-                        draw_text(face, framebuf, offset_x, start_y, "ssid: ");
+                        draw_text(face, framebuf, offset_x, start_y, "ssid: ", WITHE);
                     }
                     temp_offset_x = next_x("ssid: ", face, offset_x);
                     char chinese_ssid[50];
                     strncpy(chinese_ssid, ll->logs[i].log + strlen("ssid: "), strlen(ll->logs[i].log));
-                    draw_text(chinese_face, framebuf, temp_offset_x, start_y, chinese_ssid);
+                    draw_text(chinese_face, framebuf, temp_offset_x, start_y, chinese_ssid, WITHE);
                 } else {
-                    draw_text(face, framebuf, offset_x, start_y, ll->logs[i].log);
+                    draw_text(face, framebuf, offset_x, start_y, ll->logs[i].log, WITHE);
                 }
 
                 if (strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0) {
@@ -763,8 +650,8 @@ int main(int argc, char **argv) {
                         str_next = next_x(ll->logs[i].log, face, temp_offset_x);
                     }
                     u32 str_next_next = next_x(str, face, str_next);
-                    draw_text(face, framebuf, str_next, start_y, str);
-                    draw_text_green(face, framebuf, str_next_next, start_y, "[CLEAR]");
+                    draw_text(face, framebuf, str_next, start_y, str, WITHE);
+                    draw_text(face, framebuf, str_next_next, start_y, "[CLEAR]", GREEN);
                 }
                 start_y += (face->size->metrics.height >> 6);
             }
