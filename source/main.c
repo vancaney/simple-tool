@@ -235,8 +235,8 @@ char *get_time() {
     char *time = (char *) malloc(255 * sizeof(char));
     if (day <= 9) {
         char c[10];
-        sprintf(c, "%s", days[day]);
-        sprintf(time, "%i-%s-%s %02i:%02i:%02i", year, months[month], days[day], hours, minutes, seconds);
+        sprintf(c, "%s", days[day - 1]);
+        sprintf(time, "%i-%s-%s %02i:%02i:%02i", year, months[month], days[day - 1], hours, minutes, seconds);
     } else {
         sprintf(time, "%i-%s-%i %02i:%02i:%02i", year, months[month], day, hours, minutes, seconds);
     }
