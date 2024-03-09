@@ -57,16 +57,31 @@ static u32 offset = 60;
 
 static bool text_draw[FB_WIDTH][FB_HEIGHT];
 
-typedef enum {
-    WITHE,
-    BLACK,
-    RED,
-    YELLOW,
-    GREEN,
-    BLUE
-} Color;
+u32 withe_frame(u8 pixel) {
+    return RGBA8_MAXALPHA(pixel, pixel, pixel);
+}
 
-void draw_glyph(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y, Color color) {
+u32 black_frame(u8 pixel) {
+    return RGBA8_MAXALPHA(0, 0, 0);
+}
+
+u32 red_frame(u8 pixel) {
+    return RGBA8_MAXALPHA(pixel, 0, 0);
+}
+
+u32 yellow_frame(u8 pixel) {
+    return RGBA8_MAXALPHA(pixel, pixel, 0);
+}
+
+u32 green_frame(u8 pixel) {
+    return RGBA8_MAXALPHA(0, pixel, 0);
+}
+
+u32 blue_frame(u8 pixel) {
+    return RGBA8_MAXALPHA(0, 0, pixel);
+}
+
+void draw_glyph(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y, u32(*frame_color)(u8)) {
     u32 framex, framey;
     u32 tmpx, tmpy;
     u8 *imageptr = bitmap->buffer;
@@ -83,27 +98,7 @@ void draw_glyph(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y, Color color) {
                 u8 pixel = imageptr[tmpx];
                 // Only draw non-blank pixels
                 if (pixel != 0) {
-                    switch (color) {
-                        case WITHE:
-                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(pixel, pixel, pixel);
-                            break;
-                        case BLACK:
-                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(0, 0, 0);
-                            break;
-                        case RED:
-                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(pixel, 0, 0);
-                            break;
-                        case YELLOW:
-                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(pixel, pixel, 0);
-                            break;
-                        case GREEN:
-                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(0, pixel, 0);
-                            break;
-                        case BLUE:
-                            framebuf[framey * framebuf_width + framex] = RGBA8_MAXALPHA(0, 0, pixel);
-                            break;
-                    }
-
+                    framebuf[framey * framebuf_width + framex] = frame_color(pixel);
                     text_draw[framex][framey] = true;
                 }
             }
@@ -113,7 +108,7 @@ void draw_glyph(FT_Bitmap *bitmap, u32 *framebuf, u32 x, u32 y, Color color) {
     }
 }
 
-void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str, Color color) {
+void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str, u32(*frame_color)(u8)) {
     u32 tmpx = x;
     FT_Error ret = 0;
     FT_UInt glyph_index;
@@ -150,7 +145,7 @@ void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str, Color
 
         if (ret) return;
 
-        draw_glyph(&slot->bitmap, framebuf, tmpx + slot->bitmap_left, y - slot->bitmap_top, color);
+        draw_glyph(&slot->bitmap, framebuf, tmpx + slot->bitmap_left, y - slot->bitmap_top, frame_color);
 
         tmpx += slot->advance.x >> 6;
         y += slot->advance.y >> 6;
@@ -234,8 +229,6 @@ char *get_time() {
     int year = timeStruct->tm_year + 1900;
     char *time = (char *) malloc(255 * sizeof(char));
     if (day <= 9) {
-        char c[10];
-        sprintf(c, "%s", days[day - 1]);
         sprintf(time, "%i-%s-%s %02i:%02i:%02i", year, months[month], days[day - 1], hours, minutes, seconds);
     } else {
         sprintf(time, "%i-%s-%i %02i:%02i:%02i", year, months[month], day, hours, minutes, seconds);
@@ -474,7 +467,7 @@ int main(int argc, char **argv) {
             }
         }
         draw_text(face, framebuf, TIME_X, TIME_Y,
-                  time, WITHE);
+                  time, withe_frame);
 
         for (u32 i = FB_HEIGHT - TOP_START_Y; i <= FB_HEIGHT - (2 * TOP_START_Y - TOP_END_Y); i++) {
             for (u32 j = BATTERY_ICON_X; j < BATTERY_ICON_X + 200; j++) {
@@ -483,13 +476,13 @@ int main(int argc, char **argv) {
             }
         }
         psmGetBatteryChargePercentage(&batteryPercentage);
-        draw_text(face, framebuf, BATTERY_ICON_X, BATTERY_ICON_Y, "[", WITHE);
+        draw_text(face, framebuf, BATTERY_ICON_X, BATTERY_ICON_Y, "[", withe_frame);
         u32 w = next_x("[", face, BATTERY_ICON_X);
-        draw_text(face, framebuf, 100 + w, BATTERY_ICON_Y, "}", WITHE);
+        draw_text(face, framebuf, 100 + w, BATTERY_ICON_Y, "}", withe_frame);
         char v[255];
         sprintf(v, "%d%%", batteryPercentage);
         u32 battery_percentage_x = next_x("}", face, 100 + w) + 10;
-        draw_text(face, framebuf, battery_percentage_x, BATTERY_ICON_Y, v, WITHE);
+        draw_text(face, framebuf, battery_percentage_x, BATTERY_ICON_Y, v, withe_frame);
         u32 end = w + batteryPercentage;
         for (u32 i = BATTERY_ICON_Y - (face->size->metrics.height >> 6); i < BATTERY_ICON_Y; i++) {
             for (u32 j = w; j < end; j++) {
@@ -504,7 +497,7 @@ int main(int argc, char **argv) {
         }
         psmIsEnoughPowerSupplied(&power_charge);
         if (power_charge)
-            draw_text(face, framebuf, w + 100 / 2 - 10, BATTERY_ICON_Y - 2, ":D-", BLACK);
+            draw_text(face, framebuf, w + 100 / 2 - 10, BATTERY_ICON_Y - 2, ":D-", black_frame);
 
         if (main_menu->print_flag) {
             // 绘制光标，使用光标的位置和尺寸确定绘制范围
@@ -512,7 +505,7 @@ int main(int argc, char **argv) {
             // 绘制主菜单选项
             for (int i = 0; i <= exit_selection; ++i) {
                 draw_text(face, framebuf, main_menu->selection[i].x, main_menu->selection[i].y,
-                          main_menu->selection[i].name, WITHE);
+                          main_menu->selection[i].name, withe_frame);
             }
             if (kDown & HidNpadButton_Down || kDown & HidNpadButton_StickLDown) {
                 Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
@@ -531,7 +524,7 @@ int main(int argc, char **argv) {
 
         if (cwp_menu->print_flag) {
             draw_text(face, framebuf, cwp_menu->selection[cwp_title_selection].x,
-                      cwp_menu->selection[cwp_title_selection].y, cwp_menu->selection[cwp_title_selection].name, WITHE);
+                      cwp_menu->selection[cwp_title_selection].y, cwp_menu->selection[cwp_title_selection].name, withe_frame);
             //日志开始输出的y坐标
             u32 start_y = offset_y + offset - (face->size->metrics.height >> 6);
             //检测switch当前的互联网状态（是否是飞行模式）
@@ -577,10 +570,11 @@ int main(int argc, char **argv) {
                     add(ll, "no wifi profiles are currently set up.");
                 } else {
                     add(ll, "press plus(+) to remove all wifi profiles or press B to return Main Menu");
+                    add(ll, "");
                 }
                 u32 tempY = start_y;
                 for (int i = 0; i <= ll->cur_index; ++i) {
-                    draw_text(face, framebuf, offset_x, tempY, ll->logs[i].log, WITHE);
+                    draw_text(face, framebuf, offset_x, tempY, ll->logs[i].log, withe_frame);
                     tempY += (face->size->metrics.height >> 6);
                 }
                 search_wifi = true;
@@ -631,14 +625,14 @@ int main(int argc, char **argv) {
                 bool chinese_str = contains_chinese(ll->logs[i].log);
                 if (chinese_str) {
                     if (strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0) {
-                        draw_text(face, framebuf, offset_x, start_y, "ssid: ", WITHE);
+                        draw_text(face, framebuf, offset_x, start_y, "ssid: ", withe_frame);
                     }
                     temp_offset_x = next_x("ssid: ", face, offset_x);
                     char chinese_ssid[50];
                     strncpy(chinese_ssid, ll->logs[i].log + strlen("ssid: "), strlen(ll->logs[i].log));
-                    draw_text(chinese_face, framebuf, temp_offset_x, start_y, chinese_ssid, WITHE);
+                    draw_text(chinese_face, framebuf, temp_offset_x, start_y, chinese_ssid, withe_frame);
                 } else {
-                    draw_text(face, framebuf, offset_x, start_y, ll->logs[i].log, WITHE);
+                    draw_text(face, framebuf, offset_x, start_y, ll->logs[i].log, withe_frame);
                 }
 
                 if (strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0) {
@@ -650,8 +644,8 @@ int main(int argc, char **argv) {
                         str_next = next_x(ll->logs[i].log, face, temp_offset_x);
                     }
                     u32 str_next_next = next_x(str, face, str_next);
-                    draw_text(face, framebuf, str_next, start_y, str, WITHE);
-                    draw_text(face, framebuf, str_next_next, start_y, "[CLEAR]", GREEN);
+                    draw_text(face, framebuf, str_next, start_y, str, withe_frame);
+                    draw_text(face, framebuf, str_next_next, start_y, "[CLEAR]", green_frame);
                 }
                 start_y += (face->size->metrics.height >> 6);
             }
