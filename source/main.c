@@ -367,25 +367,15 @@ int main(int argc, char **argv) {
     //主菜单
     Menu *main_menu;
     Init_Menu(&main_menu, MAIN_MENU_SIZE, true);
-    strcpy(main_menu->selection[main_menu_title_selection].name, "Main Menu");
-    main_menu->selection[main_menu_title_selection].x = MAIN_MENU_TITLE_X;
-    main_menu->selection[main_menu_title_selection].y = MAIN_MENU_TITLE_Y;
-    strcpy(main_menu->selection[clear_wifi_profiler_selection].name, "Clear Wifi Profile");
-    main_menu->selection[clear_wifi_profiler_selection].x = offset_x;
-    main_menu->selection[clear_wifi_profiler_selection].y = offset_y + clear_wifi_profiler_selection * offset;
-//    strcpy(main_menu->selection[text_selection].name, "test");
-//    main_menu->selection[text_selection].x = offset_x;
-//    main_menu->selection[text_selection].y = main_menu->selection[clear_wifi_profiler_selection].y + MENU_DISTANCE;
-    strcpy(main_menu->selection[exit_selection].name, "Exit");
-    main_menu->selection[exit_selection].x = offset_x;
-    main_menu->selection[exit_selection].y = offset_y + exit_selection * offset;
+    Init_selection_detail(main_menu, "Main Menu", MAIN_MENU_TITLE_X, MAIN_MENU_TITLE_Y);
+    u32 clear_wifi_profiler = Init_selection_detail(main_menu, "Clear Wifi Profile", offset_x, MAIN_MENU_TITLE_Y + main_menu->cur_selection_number * offset);
+    u32 exit = Init_selection_detail(main_menu, "Exit", offset_x, MAIN_MENU_TITLE_Y + main_menu->cur_selection_number * offset);
 
     //clear WiFi profiler 菜单
     Menu *cwp_menu;
     Init_Menu(&cwp_menu, CWP_MENU_SIZE, false);
-    strcpy(cwp_menu->selection[cwp_title_selection].name, "Clear Wifi Profile");
-    cwp_menu->selection[cwp_title_selection].x = CWP_MENU_TITLE_X;
-    cwp_menu->selection[cwp_title_selection].y = CWP_MENU_TITLE_Y;
+    Init_selection_detail(cwp_menu, "Clear Wifi Profile", CWP_MENU_TITLE_X, CWP_MENU_TITLE_Y);
+
     bool search_wifi = false;
     bool detect_airplane_mode = false;
     s32 r_total_out = 0;
@@ -416,14 +406,14 @@ int main(int argc, char **argv) {
         u32 kDown = padGetButtonsDown(&pad);
 
         //进入 clear WiFi profiler
-        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[clear_wifi_profiler_selection].y)) {
+        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[clear_wifi_profiler].y && !cwp_menu->print_flag)) {
             main_menu->print_flag = false;
             cwp_menu->print_flag = true;
             ll = createLogList(SCROLL_LOG_LIST_MAX_LINES, SCROLL_LOG_LIST_MAX_LINE_LENGTH);
         }
 
         // break in order to return to hbmenu
-        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[exit_selection].y))
+        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[exit].y))
             break;
 
         // 返回到上一级
@@ -503,29 +493,30 @@ int main(int argc, char **argv) {
             // 绘制光标，使用光标的位置和尺寸确定绘制范围
             Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
             // 绘制主菜单选项
-            for (int i = 0; i <= exit_selection; ++i) {
+            for (int i = 0; i < main_menu->max_selection_number; ++i) {
                 draw_text(face, framebuf, main_menu->selection[i].x, main_menu->selection[i].y,
                           main_menu->selection[i].name, withe_frame);
             }
             if (kDown & HidNpadButton_Down || kDown & HidNpadButton_StickLDown) {
                 Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
-                decide_menu_down(&cursor, main_menu, exit_selection);
+                decide_menu_down(&cursor, main_menu, main_menu->selection[main_menu->max_selection_number - 1].index);
                 if (main_menu->print_flag)
                     Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
             }
 
             if (kDown & HidNpadButton_Up || kDown & HidNpadButton_StickLUp) {
                 Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 165);
-                decide_menu_up(&cursor, main_menu, exit_selection);
+                decide_menu_up(&cursor, main_menu, main_menu->selection[main_menu->max_selection_number - 1].index);
                 if (main_menu->print_flag)
                     Draw_Cursor(&cursor, stride, &text_draw, framebuf, 0, 0, 0);
             }
         }
 
         if (cwp_menu->print_flag) {
-            draw_text(face, framebuf, cwp_menu->selection[cwp_title_selection].x,
-                      cwp_menu->selection[cwp_title_selection].y, cwp_menu->selection[cwp_title_selection].name,
-                      withe_frame);
+            for (int i = 0; i < cwp_menu->max_selection_number; ++i) {
+                draw_text(face, framebuf, cwp_menu->selection[i].x, cwp_menu->selection[i].y,
+                          cwp_menu->selection[i].name, withe_frame);
+            }
             //日志开始输出的y坐标
             u32 start_y = offset_y + offset - (face->size->metrics.height >> 6);
             //检测switch当前的互联网状态（是否是飞行模式）

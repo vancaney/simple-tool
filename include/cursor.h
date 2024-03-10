@@ -21,7 +21,7 @@ typedef struct {
 void Init_Cursor(Cursor *cursor, u32 x, u32 y, u32 width, u32 height, u32 offset);
 
 void Draw_Cursor(Cursor *cursor, u32 stride, bool (*text_draw)[FT_WIDTH][FT_HEIGHT], u32 *framebuf, u32 R, u32 G, u32 B);
-void decide_menu_up(Cursor *cursor, const Menu *menu, int selection);
-void decide_menu_down(Cursor *cursor, const Menu *menu, int selection);
+void decide_menu_up(Cursor *cursor, const Menu *menu, u32 selection);
+void decide_menu_down(Cursor *cursor, const Menu *menu, u32 selection);
 
 #endif //UNTITLED1_CURSOR_H

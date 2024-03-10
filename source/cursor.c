@@ -22,8 +22,8 @@ void Draw_Cursor(Cursor *cursor, u32 stride, bool (*text_draw)[FT_WIDTH][FT_HEIG
     }
 }
 
-void decide_menu_up(Cursor *cursor, const Menu *menu, int selection){
-    for(int i = selection; i > 0; --i){
+void decide_menu_up(Cursor *cursor, const Menu *menu, u32 selection){
+    for(u32 i = selection; i > 0; --i){
         if(cursor->y == menu->selection[i].y){
             if(i == 1){
                 cursor->y = menu->selection[selection].y;
@@ -35,8 +35,8 @@ void decide_menu_up(Cursor *cursor, const Menu *menu, int selection){
     }
 }
 
-void decide_menu_down(Cursor *cursor, const Menu *menu, int selection){
-    for(int i = 0; i <= selection; ++i){
+void decide_menu_down(Cursor *cursor, const Menu *menu, u32 selection){
+    for(u32 i = 0; i <= selection; ++i){
         if(cursor->y == menu->selection[i].y){
             if(i < selection){
                 cursor->y = menu->selection[++i].y;
