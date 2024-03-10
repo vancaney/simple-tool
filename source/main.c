@@ -652,7 +652,7 @@ int main(int argc, char **argv) {
             }
 
             if (additional > 0) {
-                add(ll, ssid_list[r_total_out - additional]);
+                add(ll, additional_list[r_total_out - additional]);
                 additional--;
             }
         }
