@@ -152,6 +152,15 @@ void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str, u32(*
     }
 }
 
+void destory_line(u32 startY, u32 endY, u32 startX, u32 endX, u32 stride, u32 *framebuf, u8 pixel, u32 (*frame_color)(u8)) {
+    for (u32 i = startY; i <= endY; i++) {
+        for (u32 j = startX; j < endX; j++) {
+            u32 pos = i * stride / sizeof(u32) + j;
+            framebuf[pos] = frame_color(pixel);
+        }
+    }
+}
+
 // 计算先前文本的像素宽度
 u32 next_x(const char *previous_text, FT_Face face, u32 previous_x) {
     u32 previous_text_width = 0;
@@ -219,7 +228,7 @@ const char *const days[9] = {"01", "02", "03", "04", "05", "06", "07", "08", "09
 char *get_time() {
     time_t unixTime = time(NULL);
     struct tm *timeStruct = localtime(
-            (const time_t *) &unixTime);//Gets UTC time. If you want local-time use localtime().
+            (const time_t *) &unixTime);
 
     int hours = timeStruct->tm_hour;
     int minutes = timeStruct->tm_min;
@@ -395,7 +404,7 @@ int main(int argc, char **argv) {
 
     u32 time_right_position = next_x("0000-00-00 00:00:00", face, TIME_X);
     SetSysNetworkSettings *NetworkSettings = NULL;
-    char **ssid_list = NULL;
+    char **additional_list = NULL;
     int ssid_list_length = 0;
     int additional = 0;
     while (appletMainLoop()) {
@@ -428,12 +437,12 @@ int main(int argc, char **argv) {
             search_wifi = false;
             detect_airplane_mode = false;
             additional = 0;
-            if (ssid_list != NULL) {
+            if (additional_list != NULL) {
                 for (int i = 0; i < ssid_list_length; ++i) {
-                    free(ssid_list[i]);
+                    free(additional_list[i]);
                 }
-                free(ssid_list);
-                ssid_list = NULL;
+                free(additional_list);
+                additional_list = NULL;
             }
             if (NetworkSettings != NULL) {
                 free(NetworkSettings);
@@ -453,28 +462,19 @@ int main(int argc, char **argv) {
                 u32 pos = i * stride / sizeof(u32) + j;
                 if (TOP_LINE(i, j) || BOTTOM_LINE(i, j) || LEFT_LINE(i, j) || RIGHT_LINE(i, j) ||
                     HORIZON_LINE(i, j))
-                    framebuf[pos] = RGBA8_MAXALPHA(255, 255, 255);
+                    framebuf[pos] = withe_frame(255);
                 else
-                    framebuf[pos] = RGBA8_MAXALPHA(0, 0, 165);
+                    framebuf[pos] = blue_frame(165);
             }
         }
 
         char *time = get_time();
-        for (u32 i = TOP_START_Y; i <= TOP_END_Y; i++) {
-            for (u32 j = TIME_X; j < time_right_position; j++) {
-                u32 pos = i * stride / sizeof(u32) + j;
-                framebuf[pos] = RGBA8_MAXALPHA(0, 0, 165);
-            }
-        }
+        destory_line(TOP_START_Y, TOP_END_Y, TIME_X, time_right_position, stride, framebuf, 165, blue_frame);
         draw_text(face, framebuf, TIME_X, TIME_Y,
                   time, withe_frame);
 
-        for (u32 i = FB_HEIGHT - TOP_START_Y; i <= FB_HEIGHT - (2 * TOP_START_Y - TOP_END_Y); i++) {
-            for (u32 j = BATTERY_ICON_X; j < BATTERY_ICON_X + 200; j++) {
-                u32 pos = i * stride / sizeof(u32) + j;
-                framebuf[pos] = RGBA8_MAXALPHA(0, 0, 165);
-            }
-        }
+        destory_line(FB_HEIGHT - TOP_START_Y, FB_HEIGHT - (2 * TOP_START_Y - TOP_END_Y), BATTERY_ICON_X,
+                     BATTERY_ICON_X + 200, stride, framebuf, 165, blue_frame);
         psmGetBatteryChargePercentage(&batteryPercentage);
         draw_text(face, framebuf, BATTERY_ICON_X, BATTERY_ICON_Y, "[", withe_frame);
         u32 w = next_x("[", face, BATTERY_ICON_X);
@@ -488,11 +488,11 @@ int main(int argc, char **argv) {
             for (u32 j = w; j < end; j++) {
                 u32 pos = i * stride / sizeof(u32) + j;
                 if (batteryPercentage <= 100 && batteryPercentage >= 60)
-                    framebuf[pos] = RGBA8_MAXALPHA(0, 255, 0);
+                    framebuf[pos] = green_frame(255);
                 else if (batteryPercentage < 60 && batteryPercentage > 20)
-                    framebuf[pos] = RGBA8_MAXALPHA(255, 255, 0);
+                    framebuf[pos] = yellow_frame(255);
                 else
-                    framebuf[pos] = RGBA8_MAXALPHA(255, 0, 0);
+                    framebuf[pos] = red_frame(255);
             }
         }
         psmIsEnoughPowerSupplied(&power_charge);
@@ -524,7 +524,8 @@ int main(int argc, char **argv) {
 
         if (cwp_menu->print_flag) {
             draw_text(face, framebuf, cwp_menu->selection[cwp_title_selection].x,
-                      cwp_menu->selection[cwp_title_selection].y, cwp_menu->selection[cwp_title_selection].name, withe_frame);
+                      cwp_menu->selection[cwp_title_selection].y, cwp_menu->selection[cwp_title_selection].name,
+                      withe_frame);
             //日志开始输出的y坐标
             u32 start_y = offset_y + offset - (face->size->metrics.height >> 6);
             //检测switch当前的互联网状态（是否是飞行模式）
@@ -582,9 +583,9 @@ int main(int argc, char **argv) {
 
             if (kDown & HidNpadButton_Plus && NetworkSettings != NULL && r_total_out - 1 != 0) {
                 Service *service = nifmGetServiceSession_GeneralService();
-                ssid_list = malloc(r_total_out * sizeof(char *));
+                additional_list = malloc(r_total_out * sizeof(char *));
                 for (int i = 0; i < r_total_out; ++i) {
-                    ssid_list[i] = malloc(255 * sizeof(char));
+                    additional_list[i] = malloc(255 * sizeof(char));
                 }
 
                 //删除switch的所有ssid
@@ -601,15 +602,15 @@ int main(int argc, char **argv) {
                         }
                         char ssid[255];
                         sprintf(ssid, "ssid: %s", (NetworkSettings + i)->access_point_ssid);
-                        strcpy(ssid_list[i - 1], ssid);
+                        strcpy(additional_list[i - 1], ssid);
                     }
                 }
 
-                strcpy(ssid_list[r_total_out - 1], "delete all wifi profiles! press B to return.");
+                strcpy(additional_list[r_total_out - 1], "delete all wifi profiles! press B to return.");
 
                 int other = SCROLL_LOG_LIST_MAX_LINES - ll->cur_index - 1;
                 for (int i = 0; i < (r_total_out <= other ? r_total_out : other); ++i) {
-                    add(ll, ssid_list[i]);
+                    add(ll, additional_list[i]);
                 }
 
                 if (r_total_out > other) {
@@ -662,11 +663,11 @@ int main(int argc, char **argv) {
         clearLogList(ll);
         ll = NULL;
     }
-    if (ssid_list != NULL) {
+    if (additional_list != NULL) {
         for (int i = 0; i < ssid_list_length; ++i) {
-            free(ssid_list[i]);
+            free(additional_list[i]);
         }
-        free(ssid_list);
+        free(additional_list);
     }
     if (NetworkSettings != NULL)
         free(NetworkSettings);
