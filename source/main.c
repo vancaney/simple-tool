@@ -621,11 +621,11 @@ int main(int argc, char **argv) {
                     char ssid[100];
                     sprintf(ssid, "ssid: %s", (NetworkSettings + ssid_index)->access_point_ssid);
                     add(ll, ssid);
-                    u32 tempY = start_y;
-                    print_log_list(ll, tempY, face, chinese_face, framebuf);
                 }
                 ssid_index++;
             }
+
+            print_log_list(ll, start_y, face, chinese_face, framebuf);
 
             if (start_delete_ssid && ssid_index == r_total_out) {
                 add(ll, "delete all wifi profiles! press B to return.");
@@ -633,8 +633,6 @@ int main(int argc, char **argv) {
                 free(NetworkSettings);
                 NetworkSettings = NULL;
             }
-            print_log_list(ll, start_y, face, chinese_face, framebuf);
-
         }
         free(time);
         framebufferEnd(&fb);
