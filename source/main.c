@@ -286,7 +286,7 @@ unsigned char *loadFontFile(const char *filename, long *fileSize) {
     return buffer;
 }
 
-void print_log_list(logList *ll, u32 y, FT_Face face, FT_Face chinese_face, u32 *framebuf){
+void print_log_list(logList *ll, u32 y, FT_Face face, FT_Face chinese_face, u32 *framebuf) {
     for (int j = 0; j <= ll->cur_index; ++j) {
         u32 temp_offset_x = offset_x;
         bool chinese_str = contains_chinese(ll->logs[j].log);
@@ -411,10 +411,11 @@ int main(int argc, char **argv) {
     Menu *cwp_menu;
     Init_Menu(&cwp_menu, CWP_MENU_SIZE, false);
     Init_selection_detail(cwp_menu, "Clear Wifi Profile", CWP_MENU_TITLE_X, CWP_MENU_TITLE_Y);
-
     bool search_wifi = false;
     bool detect_airplane_mode = false;
+    bool start_delete_ssid = false;
     bool print_finish_s = false;
+    u32 ssid_index = 0;
     s32 r_total_out = 0;
 
     Cursor cursor;
@@ -431,8 +432,6 @@ int main(int argc, char **argv) {
 
     u32 time_right_position = next_x("0000-00-00 00:00:00", face, TIME_X);
     SetSysNetworkSettings *NetworkSettings = NULL;
-    char **additional_list = NULL;
-    int ssid_list_length = 0;
     while (appletMainLoop()) {
 
         // Scan the gamepad. This should be done once for each frame
@@ -459,18 +458,13 @@ int main(int argc, char **argv) {
                 clearLogList(ll);
                 ll = NULL;
             }
+            ssid_index = 0;
             main_menu->print_flag = true;
             cwp_menu->print_flag = false;
             search_wifi = false;
             detect_airplane_mode = false;
             print_finish_s = false;
-            if (additional_list != NULL) {
-                for (int i = 0; i < ssid_list_length; ++i) {
-                    free(additional_list[i]);
-                }
-                free(additional_list);
-                additional_list = NULL;
-            }
+            start_delete_ssid = false;
             if (NetworkSettings != NULL) {
                 free(NetworkSettings);
                 NetworkSettings = NULL;
@@ -610,43 +604,44 @@ int main(int argc, char **argv) {
             }
 
             if (kDown & HidNpadButton_Plus && NetworkSettings != NULL && r_total_out - 1 != 0) {
+                start_delete_ssid = true;
+            }
+
+            if (start_delete_ssid && ssid_index < r_total_out) {
                 Service *service = nifmGetServiceSession_GeneralService();
-                additional_list = malloc(r_total_out * sizeof(char *));
-                for (int i = 0; i < r_total_out; ++i) {
-                    additional_list[i] = malloc(255 * sizeof(char));
-                }
-
-                //删除switch的所有ssid
-                for (int i = 0; i < r_total_out; ++i) {
-                    if (strlen((NetworkSettings + i)->access_point_ssid) > 0 &&
-                        strlen((NetworkSettings + i)->access_point_ssid) <= 0x21) {
-                        res = serviceDispatchImpl(service, 10, &((NetworkSettings + i)->uuid), sizeof(Uuid), NULL,
-                                                  0,
-                                                  (SfDispatchParams) {0});
-                        if (R_FAILED(res)) {
-                            free(NetworkSettings);
-                            NetworkSettings = NULL;
-                            return error_screen("serviceDispatchImpl() failed: 0X%x", res);
-                        }
-
-                        char ssid[100];
-                        sprintf(ssid, "ssid: %s", (NetworkSettings + i)->access_point_ssid);
-                        add(ll, ssid);
-                        u32 tempY = start_y;
-                        print_log_list(ll, tempY, face, chinese_face, framebuf);
+                if (strlen((NetworkSettings + ssid_index)->access_point_ssid) > 0 &&
+                    strlen((NetworkSettings + ssid_index)->access_point_ssid) <= 0x21) {
+                    res = serviceDispatchImpl(service, 10, &((NetworkSettings + ssid_index)->uuid), sizeof(Uuid), NULL,
+                                              0,
+                                              (SfDispatchParams) {0});
+                    if (R_FAILED(res)) {
+                        free(NetworkSettings);
+                        NetworkSettings = NULL;
+                        return error_screen("serviceDispatchImpl() failed: 0X%x", res);
                     }
+
+                    char ssid[100];
+                    sprintf(ssid, "ssid: %s", (NetworkSettings + ssid_index)->access_point_ssid);
+                    add(ll, ssid);
+                    u32 tempY = start_y;
+                    print_log_list(ll, tempY, face, chinese_face, framebuf);
                 }
+                ssid_index++;
+            }
+
+            if (start_delete_ssid && ssid_index == r_total_out) {
+                start_delete_ssid = false;
                 print_finish_s = true;
                 free(NetworkSettings);
                 NetworkSettings = NULL;
             }
 
             print_log_list(ll, start_y, face, chinese_face, framebuf);
-            if(print_finish_s){
+
+            if (print_finish_s) {
                 add(ll, "delete all wifi profiles! press B to return.");
                 print_finish_s = false;
             }
-
         }
         free(time);
         framebufferEnd(&fb);
@@ -655,13 +650,6 @@ int main(int argc, char **argv) {
     if (ll != NULL) {
         clearLogList(ll);
         ll = NULL;
-    }
-
-    if (additional_list != NULL) {
-        for (int i = 0; i < ssid_list_length; ++i) {
-            free(additional_list[i]);
-        }
-        free(additional_list);
     }
 
     if (NetworkSettings != NULL)
