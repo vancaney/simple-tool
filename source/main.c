@@ -411,10 +411,10 @@ int main(int argc, char **argv) {
     Menu *cwp_menu;
     Init_Menu(&cwp_menu, CWP_MENU_SIZE, false);
     Init_selection_detail(cwp_menu, "Clear Wifi Profile", CWP_MENU_TITLE_X, CWP_MENU_TITLE_Y);
+    SetSysNetworkSettings *NetworkSettings = NULL;
     bool search_wifi = false;
     bool detect_airplane_mode = false;
     bool start_delete_ssid = false;
-    bool print_finish_s = false;
     u32 ssid_index = 0;
     s32 r_total_out = 0;
 
@@ -431,7 +431,6 @@ int main(int argc, char **argv) {
     logList *ll = NULL;
 
     u32 time_right_position = next_x("0000-00-00 00:00:00", face, TIME_X);
-    SetSysNetworkSettings *NetworkSettings = NULL;
     while (appletMainLoop()) {
 
         // Scan the gamepad. This should be done once for each frame
@@ -454,20 +453,19 @@ int main(int argc, char **argv) {
 
         // 返回到上一级
         if (kDown & HidNpadButton_B && cwp_menu->print_flag) {
-            if (ll != NULL) {
-                clearLogList(ll);
-                ll = NULL;
-            }
             ssid_index = 0;
             main_menu->print_flag = true;
             cwp_menu->print_flag = false;
             search_wifi = false;
             detect_airplane_mode = false;
-            print_finish_s = false;
             start_delete_ssid = false;
             if (NetworkSettings != NULL) {
                 free(NetworkSettings);
                 NetworkSettings = NULL;
+            }
+            if (ll != NULL) {
+                clearLogList(ll);
+                ll = NULL;
             }
         }
 
@@ -630,18 +628,13 @@ int main(int argc, char **argv) {
             }
 
             if (start_delete_ssid && ssid_index == r_total_out) {
+                add(ll, "delete all wifi profiles! press B to return.");
                 start_delete_ssid = false;
-                print_finish_s = true;
                 free(NetworkSettings);
                 NetworkSettings = NULL;
             }
-
             print_log_list(ll, start_y, face, chinese_face, framebuf);
 
-            if (print_finish_s) {
-                add(ll, "delete all wifi profiles! press B to return.");
-                print_finish_s = false;
-            }
         }
         free(time);
         framebufferEnd(&fb);
