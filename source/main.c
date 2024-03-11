@@ -286,6 +286,39 @@ unsigned char *loadFontFile(const char *filename, long *fileSize) {
     return buffer;
 }
 
+void print_log_list(logList *ll, u32 y, FT_Face face, FT_Face chinese_face, u32 *framebuf){
+    for (int j = 0; j <= ll->cur_index; ++j) {
+        u32 temp_offset_x = offset_x;
+        bool chinese_str = contains_chinese(ll->logs[j].log);
+        bool prefix_ssid = strncmp(ll->logs[j].log, "ssid:", strlen("ssid:")) == 0;
+        if (chinese_str) {
+            if (prefix_ssid) {
+                draw_text(face, framebuf, offset_x, y, "ssid: ", withe_frame);
+            }
+            temp_offset_x = next_x("ssid: ", face, offset_x);
+            char chinese_ssid[50];
+            strncpy(chinese_ssid, ll->logs[j].log + strlen("ssid: "), strlen(ll->logs[j].log));
+            draw_text(chinese_face, framebuf, temp_offset_x, y, chinese_ssid, withe_frame);
+        } else {
+            draw_text(face, framebuf, offset_x, y, ll->logs[j].log, withe_frame);
+        }
+
+        if (prefix_ssid) {
+            char str[] = "...";
+            u32 str_next;
+            if (chinese_str) {
+                str_next = next_x(ll->logs[j].log, chinese_face, temp_offset_x);
+            } else {
+                str_next = next_x(ll->logs[j].log, face, temp_offset_x);
+            }
+            u32 str_next_next = next_x(str, face, str_next);
+            draw_text(face, framebuf, str_next, y, str, withe_frame);
+            draw_text(face, framebuf, str_next_next, y, "[CLEAR]", green_frame);
+        }
+        y += (face->size->metrics.height >> 6);
+    }
+}
+
 int main(int argc, char **argv) {
     Result rc = 0;
     FT_Error ret = 0;
@@ -381,6 +414,7 @@ int main(int argc, char **argv) {
 
     bool search_wifi = false;
     bool detect_airplane_mode = false;
+    bool print_finish_s = false;
     s32 r_total_out = 0;
 
     Cursor cursor;
@@ -399,7 +433,6 @@ int main(int argc, char **argv) {
     SetSysNetworkSettings *NetworkSettings = NULL;
     char **additional_list = NULL;
     int ssid_list_length = 0;
-    int additional = 0;
     while (appletMainLoop()) {
 
         // Scan the gamepad. This should be done once for each frame
@@ -430,7 +463,7 @@ int main(int argc, char **argv) {
             cwp_menu->print_flag = false;
             search_wifi = false;
             detect_airplane_mode = false;
-            additional = 0;
+            print_finish_s = false;
             if (additional_list != NULL) {
                 for (int i = 0; i < ssid_list_length; ++i) {
                     free(additional_list[i]);
@@ -595,61 +628,25 @@ int main(int argc, char **argv) {
                             NetworkSettings = NULL;
                             return error_screen("serviceDispatchImpl() failed: 0X%x", res);
                         }
-                        char ssid[255];
+
+                        char ssid[100];
                         sprintf(ssid, "ssid: %s", (NetworkSettings + i)->access_point_ssid);
-                        strcpy(additional_list[i - 1], ssid);
+                        add(ll, ssid);
+                        u32 tempY = start_y;
+                        print_log_list(ll, tempY, face, chinese_face, framebuf);
                     }
                 }
-                strcpy(additional_list[r_total_out - 1], "delete all wifi profiles! press B to return.");
-
-                int other = SCROLL_LOG_LIST_MAX_LINES - ll->cur_index - 1;
-                for (int i = 0; i < (r_total_out <= other ? r_total_out : other); ++i) {
-                    add(ll, additional_list[i]);
-                }
-
-                if (r_total_out > other) {
-                    additional = r_total_out - other;
-                }
-
+                print_finish_s = true;
                 free(NetworkSettings);
                 NetworkSettings = NULL;
             }
 
-            for (int i = 0; i <= ll->cur_index; ++i) {
-                u32 temp_offset_x = offset_x;
-                bool chinese_str = contains_chinese(ll->logs[i].log);
-                bool prefix_ssid = strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0;
-                if (chinese_str) {
-                    if (prefix_ssid) {
-                        draw_text(face, framebuf, offset_x, start_y, "ssid: ", withe_frame);
-                    }
-                    temp_offset_x = next_x("ssid: ", face, offset_x);
-                    char chinese_ssid[50];
-                    strncpy(chinese_ssid, ll->logs[i].log + strlen("ssid: "), strlen(ll->logs[i].log));
-                    draw_text(chinese_face, framebuf, temp_offset_x, start_y, chinese_ssid, withe_frame);
-                } else {
-                    draw_text(face, framebuf, offset_x, start_y, ll->logs[i].log, withe_frame);
-                }
-
-                if (prefix_ssid) {
-                    char str[] = "...";
-                    u32 str_next;
-                    if (chinese_str) {
-                        str_next = next_x(ll->logs[i].log, chinese_face, temp_offset_x);
-                    } else {
-                        str_next = next_x(ll->logs[i].log, face, temp_offset_x);
-                    }
-                    u32 str_next_next = next_x(str, face, str_next);
-                    draw_text(face, framebuf, str_next, start_y, str, withe_frame);
-                    draw_text(face, framebuf, str_next_next, start_y, "[CLEAR]", green_frame);
-                }
-                start_y += (face->size->metrics.height >> 6);
+            print_log_list(ll, start_y, face, chinese_face, framebuf);
+            if(print_finish_s){
+                add(ll, "delete all wifi profiles! press B to return.");
+                print_finish_s = false;
             }
 
-            if (additional > 0) {
-                add(ll, additional_list[r_total_out - additional]);
-                additional--;
-            }
         }
         free(time);
         framebufferEnd(&fb);
