@@ -349,11 +349,11 @@ int main(int argc, char **argv) {
     }
 
     ret = FT_Set_Char_Size(
-            face,                     /* face对象     */
-            0,             /* 字符宽度 1/64 */
-            14 * 64,     /* 字符高度 1/64 */
-            96,      /* 水平分辨率     */
-            96);    /* 垂直分辨率     */
+            face,                     /* face对象    */
+            0,             /* 字符宽度 1/64*/
+            14 * 64,     /* 字符高度 1/64*/
+            96,      /* 水平分辨率    */
+            96);    /* 垂直分辨率    */
     if (ret) {
         FT_Done_Face(face);
         FT_Done_Face(chinese_face);
@@ -586,7 +586,7 @@ int main(int argc, char **argv) {
                 //删除switch的所有ssid
                 for (int i = 0; i < r_total_out; ++i) {
                     if (strlen((NetworkSettings + i)->access_point_ssid) > 0 &&
-                        strlen((NetworkSettings + i)->access_point_ssid) <= 33) {
+                        strlen((NetworkSettings + i)->access_point_ssid) <= 0x21) {
                         res = serviceDispatchImpl(service, 10, &((NetworkSettings + i)->uuid), sizeof(Uuid), NULL,
                                                   0,
                                                   (SfDispatchParams) {0});
@@ -600,7 +600,6 @@ int main(int argc, char **argv) {
                         strcpy(additional_list[i - 1], ssid);
                     }
                 }
-
                 strcpy(additional_list[r_total_out - 1], "delete all wifi profiles! press B to return.");
 
                 int other = SCROLL_LOG_LIST_MAX_LINES - ll->cur_index - 1;
