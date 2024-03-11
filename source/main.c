@@ -152,7 +152,8 @@ void draw_text(FT_Face face, u32 *framebuf, u32 x, u32 y, const char *str, u32(*
     }
 }
 
-void destory_line(u32 startY, u32 endY, u32 startX, u32 endX, u32 stride, u32 *framebuf, u8 pixel, u32 (*frame_color)(u8)) {
+void
+destory_line(u32 startY, u32 endY, u32 startX, u32 endX, u32 stride, u32 *framebuf, u8 pixel, u32 (*frame_color)(u8)) {
     for (u32 i = startY; i <= endY; i++) {
         for (u32 j = startX; j < endX; j++) {
             u32 pos = i * stride / sizeof(u32) + j;
@@ -368,8 +369,10 @@ int main(int argc, char **argv) {
     Menu *main_menu;
     Init_Menu(&main_menu, MAIN_MENU_SIZE, true);
     Init_selection_detail(main_menu, "Main Menu", MAIN_MENU_TITLE_X, MAIN_MENU_TITLE_Y);
-    u32 clear_wifi_profiler = Init_selection_detail(main_menu, "Clear Wifi Profile", offset_x, MAIN_MENU_TITLE_Y + main_menu->cur_selection_number * offset);
-    u32 exit = Init_selection_detail(main_menu, "Exit", offset_x, MAIN_MENU_TITLE_Y + main_menu->cur_selection_number * offset);
+    u32 clear_wifi_profiler = Init_selection_detail(main_menu, "Clear Wifi Profile", offset_x,
+                                                    MAIN_MENU_TITLE_Y + main_menu->cur_selection_number * offset);
+    u32 exit = Init_selection_detail(main_menu, "Exit", offset_x,
+                                     MAIN_MENU_TITLE_Y + main_menu->cur_selection_number * offset);
 
     //clear WiFi profiler 菜单
     Menu *cwp_menu;
@@ -406,7 +409,8 @@ int main(int argc, char **argv) {
         u32 kDown = padGetButtonsDown(&pad);
 
         //进入 clear WiFi profiler
-        if ((kDown & HidNpadButton_A) && (cursor.y == main_menu->selection[clear_wifi_profiler].y && !cwp_menu->print_flag)) {
+        if ((kDown & HidNpadButton_A) &&
+            (cursor.y == main_menu->selection[clear_wifi_profiler].y && !cwp_menu->print_flag)) {
             main_menu->print_flag = false;
             cwp_menu->print_flag = true;
             ll = createLogList(SCROLL_LOG_LIST_MAX_LINES, SCROLL_LOG_LIST_MAX_LINE_LENGTH);
@@ -615,8 +619,9 @@ int main(int argc, char **argv) {
             for (int i = 0; i <= ll->cur_index; ++i) {
                 u32 temp_offset_x = offset_x;
                 bool chinese_str = contains_chinese(ll->logs[i].log);
+                bool prefix_ssid = strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0;
                 if (chinese_str) {
-                    if (strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0) {
+                    if (prefix_ssid) {
                         draw_text(face, framebuf, offset_x, start_y, "ssid: ", withe_frame);
                     }
                     temp_offset_x = next_x("ssid: ", face, offset_x);
@@ -627,7 +632,7 @@ int main(int argc, char **argv) {
                     draw_text(face, framebuf, offset_x, start_y, ll->logs[i].log, withe_frame);
                 }
 
-                if (strncmp(ll->logs[i].log, "ssid:", strlen("ssid:")) == 0) {
+                if (prefix_ssid) {
                     char str[] = "...";
                     u32 str_next;
                     if (chinese_str) {
@@ -650,26 +655,34 @@ int main(int argc, char **argv) {
         free(time);
         framebufferEnd(&fb);
     }
+
     if (ll != NULL) {
         clearLogList(ll);
         ll = NULL;
     }
+
     if (additional_list != NULL) {
         for (int i = 0; i < ssid_list_length; ++i) {
             free(additional_list[i]);
         }
         free(additional_list);
     }
+
     if (NetworkSettings != NULL)
         free(NetworkSettings);
 
-    free(main_menu);
-    psmExit();
-    romfsExit();
+    if (cwp_menu != NULL)
+        free(cwp_menu);
+
+    if (main_menu != NULL)
+        free(main_menu);
+
     framebufferClose(&fb);
     FT_Done_Face(chinese_face);
     FT_Done_Face(face);
     FT_Done_FreeType(library);
+    romfsExit();
+    psmExit();
     nifmExit();
     setsysExit();
     setExit();
