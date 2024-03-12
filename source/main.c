@@ -489,9 +489,17 @@ int main(int argc, char **argv) {
         draw_text(face, framebuf, TIME_X, TIME_Y,
                   time, withe_frame);
 
-        //电池信息
-        destory_line(FB_HEIGHT - TOP_START_Y, FB_HEIGHT - (2 * TOP_START_Y - TOP_END_Y), BATTERY_ICON_X,
+        destory_line(FB_HEIGHT - TOP_START_Y, FB_HEIGHT - (2 * TOP_START_Y - TOP_END_Y), TIME_X - 200,
                      BATTERY_ICON_X + 200, stride, framebuf, 165, blue_frame);
+        //检测switch当前的互联网状态（是否是飞行模式）
+        bool enable;
+        res = nifmIsWirelessCommunicationEnabled(&enable);
+        if (R_FAILED(res)) return error_screen("nifmIsWirelessCommunicationEnabled() failed: 0X%x\n", res);
+        char airplane_mode[50];
+        sprintf(airplane_mode, "airplane mode: %s", enable ? "off" : "on");
+        draw_text(face, framebuf, TIME_X - 200, BATTERY_ICON_Y, airplane_mode, withe_frame);
+
+        //电池信息
         psmGetBatteryChargePercentage(&batteryPercentage);
         draw_text(face, framebuf, BATTERY_ICON_X, BATTERY_ICON_Y, "[", withe_frame);
         u32 w = next_x("[", face, BATTERY_ICON_X);
@@ -513,8 +521,14 @@ int main(int argc, char **argv) {
             }
         }
         psmIsEnoughPowerSupplied(&power_charge);
-        if (power_charge)
-            draw_text(face, framebuf, w + 100 / 2 - 10, BATTERY_ICON_Y - 2, ":D-", black_frame);
+        if (power_charge){
+            if (batteryPercentage <= 100 && batteryPercentage > 50)
+                draw_text(face, framebuf, w + 100 / 2, BATTERY_ICON_Y - 2, ":D-", black_frame);
+            else if (batteryPercentage <= 50 && batteryPercentage > 20)
+                draw_text(face, framebuf, w + 100 / 2, BATTERY_ICON_Y - 2, ":D-", yellow_frame);
+            else
+                draw_text(face, framebuf, w + 100 / 2, BATTERY_ICON_Y - 2, ":D-", red_frame);
+        }
 
         if (main_menu->print_flag) {
             // 绘制光标，使用光标的位置和尺寸确定绘制范围
@@ -547,10 +561,6 @@ int main(int argc, char **argv) {
             //日志开始输出的y坐标
             u32 start_y = offset_y + offset - (face->size->metrics.height >> 6);
 
-            //检测switch当前的互联网状态（是否是飞行模式）
-            bool enable;
-            res = nifmIsWirelessCommunicationEnabled(&enable);
-            if (R_FAILED(res)) return error_screen("nifmIsWirelessCommunicationEnabled() failed: 0X%x\n", res);
             //如果不是飞行模式，就开启飞行模式
             if (enable) {
                 enable = false;
