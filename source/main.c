@@ -412,8 +412,6 @@ int main(int argc, char **argv) {
     Init_Menu(&cwp_menu, CWP_MENU_SIZE, false);
     Init_selection_detail(cwp_menu, "Clear Wifi Profile", CWP_MENU_TITLE_X, CWP_MENU_TITLE_Y);
     SetSysNetworkSettings *NetworkSettings = NULL;
-    bool search_wifi = false;
-    bool detect_airplane_mode = false;
     bool start_delete_ssid = false;
     u32 ssid_index = 0;
     s32 r_total_out = 0;
@@ -456,8 +454,6 @@ int main(int argc, char **argv) {
             ssid_index = 0;
             main_menu->print_flag = true;
             cwp_menu->print_flag = false;
-            search_wifi = false;
-            detect_airplane_mode = false;
             start_delete_ssid = false;
             if (NetworkSettings != NULL) {
                 free(NetworkSettings);
@@ -487,11 +483,13 @@ int main(int argc, char **argv) {
             }
         }
 
-        char *time = get_time();
+        //时间
         destory_line(TOP_START_Y, TOP_END_Y, TIME_X, time_right_position, stride, framebuf, 165, blue_frame);
+        char *time = get_time();
         draw_text(face, framebuf, TIME_X, TIME_Y,
                   time, withe_frame);
 
+        //电池信息
         destory_line(FB_HEIGHT - TOP_START_Y, FB_HEIGHT - (2 * TOP_START_Y - TOP_END_Y), BATTERY_ICON_X,
                      BATTERY_ICON_X + 200, stride, framebuf, 165, blue_frame);
         psmGetBatteryChargePercentage(&batteryPercentage);
@@ -548,23 +546,23 @@ int main(int argc, char **argv) {
             }
             //日志开始输出的y坐标
             u32 start_y = offset_y + offset - (face->size->metrics.height >> 6);
+
             //检测switch当前的互联网状态（是否是飞行模式）
-            if (!detect_airplane_mode) {
-                bool enable;
-                res = nifmIsWirelessCommunicationEnabled(&enable);
-                if (R_FAILED(res)) return error_screen("nifmIsWirelessCommunicationEnabled() failed: 0X%x\n", res);
-                //如果不是飞行模式，就开启飞行模式
-                if (enable) {
-                    enable = false;
-                    res = nifmSetWirelessCommunicationEnabled(enable);
-                    if (R_FAILED(res)) return error_screen("nifmSetWirelessCommunicationEnabled() failed: 0X%x\n", res);
-                }
-                add(ll, "airplane mode: enable");
-                detect_airplane_mode = true;
+            bool enable;
+            res = nifmIsWirelessCommunicationEnabled(&enable);
+            if (R_FAILED(res)) return error_screen("nifmIsWirelessCommunicationEnabled() failed: 0X%x\n", res);
+            //如果不是飞行模式，就开启飞行模式
+            if (enable) {
+                enable = false;
+                res = nifmSetWirelessCommunicationEnabled(enable);
+                if (R_FAILED(res)) return error_screen("nifmSetWirelessCommunicationEnabled() failed: 0X%x\n", res);
             }
 
+            if(isEmpty(ll))
+                add(ll, "In this page, the device will force entry into airplane mode.");
+
             //查询一共有多少WiFi
-            if (!search_wifi) {
+            if (NetworkSettings == NULL && ssid_index == 0) {
                 s32 r_count;
                 s32 count = 10;
                 do {
@@ -593,12 +591,6 @@ int main(int argc, char **argv) {
                     add(ll, "press plus(+) to remove all wifi profiles or press B to return Main Menu");
                     add(ll, "");
                 }
-                u32 tempY = start_y;
-                for (int i = 0; i <= ll->cur_index; ++i) {
-                    draw_text(face, framebuf, offset_x, tempY, ll->logs[i].log, withe_frame);
-                    tempY += (face->size->metrics.height >> 6);
-                }
-                search_wifi = true;
             }
 
             if (kDown & HidNpadButton_Plus && NetworkSettings != NULL && r_total_out - 1 != 0) {
