@@ -596,9 +596,9 @@ int main(int argc, char **argv) {
                 sprintf(r_total_out_s, "total out: %d", r_total_out - 1);
                 add(ll, r_total_out_s);
                 if (r_total_out - 1 == 0) {
-                    add(ll, "no wifi profiles are currently set up.");
+                    add(ll, "no wifi profiles are currently set up.press B to return Main Menu.");
                 } else {
-                    add(ll, "press plus(+) to remove all wifi profiles or press B to return Main Menu");
+                    add(ll, "press plus(+) to remove all wifi profiles or press B to return Main Menu.");
                     add(ll, "");
                 }
             }

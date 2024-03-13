@@ -21,6 +21,7 @@ typedef struct {
 logList *createLogList(int log_list_length, int log_length);
 bool isEmpty(logList *ll);
 bool isFull(logList *ll);
+bool haveEnoughCapacity(logList* ll);
 void add(logList *ll, const char* str);
 void clearLogList(logList *ll);
 #endif //UNTITLED1_LOGLIST_H

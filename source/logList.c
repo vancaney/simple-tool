@@ -28,6 +28,11 @@ bool isFull(logList *ll) {
     return ll->cur_index == ll->log_list_length - 1;
 }
 
+bool haveEnoughCapacity(logList* ll){
+    assert(ll != NULL);
+    return !isEmpty(ll) && ll->cur_index < ll->log_list_length - 1;
+}
+
 void add(logList *ll, const char *str) {
     if (isFull(ll)) {
         for (int i = 0; i < ll->log_list_length - 1; ++i) {
